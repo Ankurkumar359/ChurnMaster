@@ -12,8 +12,10 @@ policies = [
     "kademlia_epoch",
     "kademlia_std",
     "heuristic",
-    "learned",
-    "oracle_heuristic",
+    "tuned_heuristic",             # global tuning selection
+    "tuned_heuristic_privileged",  # per-scenario selection (global where none exists)
+    "oracle_heuristic",            # reference only
+    "learned",                     # expands to rl_run0..rl_run{R-1}
 ]
 
 [experiment.stats]

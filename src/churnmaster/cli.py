@@ -1,9 +1,8 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-tune, evaluate, reproduce. ``show-config``, ``simulate``, ``compare``,
-``headroom``, ``diagnostics``, ``train`` and ``tune`` are implemented; the
-others are stubs that exit non-zero until their tasks land.
+tune, evaluate, reproduce. All but ``reproduce`` are implemented; it is a
+stub that exits non-zero until its task lands.
 """
 
 from __future__ import annotations
@@ -442,6 +441,68 @@ def cmd_tune(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    """Locked evaluation (Requirements 25.2, 25.3, 25.6).
+
+    ``--create-lock`` only writes the eval-split lock into the manifest (a
+    separate, explicit step). Without it, the lock must exist and match.
+    Exit codes: 0 on success; 1 on usage errors, frozen-env mismatch,
+    missing / mismatched lock (``SplitLockError``, nothing written) or an
+    already recorded evaluation without ``--allow-rerun``.
+    """
+    from churnmaster.experiments.evaluate import (EvalRerunError, SplitLockError,
+                                                  create_lock_from_configs, evaluate)
+    from churnmaster.experiments.runner import FrozenEnvError
+
+    def fail(msg: str) -> int:
+        print(f"churnmaster evaluate: {msg}", file=sys.stderr)
+        return 1
+
+    if (args.seeds is not None and args.seeds < 1) or args.workers < 1:
+        return fail("--seeds and --workers must be >= 1")
+    root = _configs_root(args)
+    exp = _experiment_path(args) or root / "experiments" / "eval.toml"
+    try:
+        if args.create_lock:
+            lock = create_lock_from_configs(root, Path(args.manifest), exp, n_seeds=args.seeds)
+            print(f"eval lock in {args.manifest}: split={lock['split']} run={lock['run']} "
+                  f"episodes={lock['episodes'][0]}..{lock['episodes'][-1]} "
+                  f"(n={len(lock['episodes'])}) scenarios={','.join(lock['scenarios'])} "
+                  f"root_seed={lock['root_seed']} seed_list_hash={lock['seed_list_hash'][:16]} "
+                  f"created={lock.get('created_utc')}")
+            return 0
+        rep = evaluate(root, Path(args.manifest), Path(args.out), q_paths=args.rl_q,
+                       tune_selected=args.tune_selected, matched_freqs=args.matched_freqs,
+                       experiment_path=exp, n_seeds=args.seeds, workers=args.workers,
+                       allow_rerun=args.allow_rerun, progress=lambda m: print(m, flush=True))
+    except (FrozenEnvError, SplitLockError, EvalRerunError, ValueError, FileNotFoundError) as e:
+        return fail(str(e))
+
+    s = rep.summary
+    headers = ["scenario", "policy", "n", "J", "success", "p95_all_ms", "pings/h", "evict/h"]
+    cols = ("J", "success_rate", "p95_latency_all_ms", "pings_per_hour", "evictions_per_hour")
+    rows = [[r["scenario"], r["policy"] + (" (priv*)" if r["privileged_fallback"] else
+                                          " (priv)" if r["privileged"] else
+                                          " (ref)" if r["reference"] else
+                                          " (no-dp)" if not r["shares_decision_points"] else ""),
+             str(r["n"]), *(_fmt_pm(r[f"{m}_mean"], r[f"{m}_std"]) for m in cols)]
+            for _, r in s.iterrows()]
+    widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+    print("  ".join(h.ljust(w) for h, w in zip(headers, widths)))
+    for r in rows:
+        print("  ".join(c.ljust(w) for c, w in zip(r, widths)))
+    print("primary tests (rl_mean - comparator, J; Holm over 9):")
+    for _, r in rep.primary.iterrows():
+        print(f"  {r['scenario']:<15} vs {r['comparator']:<16} dJ={r['mean_diff']:+.4f} "
+              f"[{r['ci_lo']:+.4f}, {r['ci_hi']:+.4f}] p={r['p']:.3g} p_holm={r['p_holm']:.3g} "
+              f"significant={bool(r['significant'])}")
+    for _, r in rep.hypotheses.iterrows():
+        print(f"{r['id']}: {r['verdict'].upper()} - {r['statement']}\n    {r['evidence']}")
+    print(f"evaluate: {rep.n_jobs} episodes, wall={rep.wall_s:.1f}s; wrote {len(rep.files)} files "
+          f"to {args.out}")
+    return 0
+
+
 def _stub(name: str):
     def run(args: argparse.Namespace) -> int:
         print(f"churnmaster {name}: not implemented yet", file=sys.stderr)
@@ -554,8 +615,29 @@ def build_parser() -> argparse.ArgumentParser:
     _add_workers_arg(p)
     p.set_defaults(func=cmd_tune)
 
+    p = sub.add_parser("evaluate", help="locked evaluation on the eval split (all policies, "
+                                        "all RL runs) with statistics and H1-H5")
+    _add_config_args(p, scenario=False)
+    p.add_argument("--create-lock", action="store_true",
+                   help="only write the eval-split lock into the manifest (separate step)")
+    p.add_argument("--allow-rerun", action="store_true",
+                   help="run even if an evaluation is already recorded (results are identical)")
+    p.add_argument("--seeds", type=int, default=None,
+                   help="eval episodes per scenario (default: eval.toml n_seeds, 20)")
+    p.add_argument("--manifest", default="results/headroom/manifest.json",
+                   help="frozen env manifest holding the eval lock")
+    p.add_argument("--rl-q", nargs="+", default=None, metavar="PATH",
+                   help="final Q-tables (default results/train/final/run{0,1,2}/q_final.npy)")
+    p.add_argument("--tune-selected", default="results/tune/selected.json",
+                   help="heuristic tuning selection (default results/tune/selected.json)")
+    p.add_argument("--matched-freqs", default="results/matched/freqs.json",
+                   help="matched_random frequencies (default results/matched/freqs.json)")
+    p.add_argument("--out", default="results/eval", metavar="DIR",
+                   help="output directory (default results/eval)")
+    _add_workers_arg(p)
+    p.set_defaults(func=cmd_evaluate)
+
     helps = {
-        "evaluate": "evaluate policies on test seeds",
         "reproduce": "regenerate all tables and figures",
     }
     for name, text in helps.items():

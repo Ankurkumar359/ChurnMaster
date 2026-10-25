@@ -256,7 +256,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - **Validates: Requirements 16.5**
   - [x] 8.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Heuristic tuning, matched random, evaluation, statistics
+- [x] 9. Heuristic tuning, matched random, evaluation, statistics
   - [x] 9.1 Implement `experiments/tune_heuristic.py`
     - All 32 configs on 10 train seeds per scenario; global best (stable + high_churn) by mean J; per-scenario best labeled privileged; `configs/experiments/tune.toml`
     - `tests/test_tune_heuristic.py`: selection logic on synthetic results
@@ -265,7 +265,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - In `policies/baselines.py`: build per-scenario frequencies split by candidate presence from RL decisions on validation seeds
     - Extend `tests/test_baselines.py`: frequencies from scripted decisions; sampled actions respect masking
     - _Requirements: 17.2_
-  - [-] 9.3 Implement `experiments/evaluate.py` with eval lock and `evaluate` command
+  - [x] 9.3 Implement `experiments/evaluate.py` with eval lock and `evaluate` command
     - 20 eval seeds × {stable, high_churn, heldout_medium} × all policies × 3 RL runs; eval split lock in manifest; SplitLockError on missing or mismatched lock; per-seed and per-run CSVs; `configs/experiments/eval.toml`
     - `tests/test_evaluate.py`: lock enforcement, eval seeds disjoint from calibration/train/validation
     - _Requirements: 25.2, 25.3, 25.6, 2.3_
