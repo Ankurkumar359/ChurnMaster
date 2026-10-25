@@ -560,6 +560,16 @@
         "executionId": "05ee59c2-be1d-4d99-afe4-ec6032abd028",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792959042224
+      },
+      {
+        "executionId": "6ac34f8a-c4c9-4b86-8220-0a5dbead4139",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961002430
+      },
+      {
+        "executionId": "6ac34f8a-c4c9-4b86-8220-0a5dbead4139",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961138172
       }
     ],
     "8.1 Implement `rl/qlearning.py`": [
@@ -567,6 +577,16 @@
         "executionId": "f6598add-f80f-4efd-a41e-5cdc87fc04ee",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792945125508
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961232995
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961411381
       }
     ],
     "8.2 Implement `policies/learned.py`": [
@@ -574,6 +594,16 @@
         "executionId": "f6598add-f80f-4efd-a41e-5cdc87fc04ee",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792945125581
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961419470
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961783702
       }
     ],
     "8.3 Implement `experiments/train.py` and `train` command": [
@@ -581,6 +611,16 @@
         "executionId": "f6598add-f80f-4efd-a41e-5cdc87fc04ee",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792945125644
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961790640
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792962759716
       }
     ],
     "8.4 Add multiprocessing to `experiments/runner.py`": [
@@ -588,6 +628,16 @@
         "executionId": "f6598add-f80f-4efd-a41e-5cdc87fc04ee",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792945125710
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961419571
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792961784164
       }
     ],
     "8.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.": [
@@ -595,6 +645,16 @@
         "executionId": "f6598add-f80f-4efd-a41e-5cdc87fc04ee",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792945125778
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792962759998
+      },
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792963655355
       }
     ],
     "9.1 Implement `experiments/tune_heuristic.py`": [
@@ -693,6 +753,13 @@
         "executionId": "47ed7119-9fa6-4ebf-9e2e-772cdd1b65d8",
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792956474862
+      }
+    ],
+    "8. Q-learning and training": [
+      {
+        "executionId": "582c2e2e-54f4-4ed6-8f49-bb8913709be0",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792963655466
       }
     ]
   }

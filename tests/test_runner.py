@@ -201,3 +201,70 @@ def test_ledger_identity_violation_raises():
         _check_identity(0.5, 0.5 + 1e-6, job)
     with pytest.raises(RuntimeError):
         _check_identity(0.5, math.nan, job)
+
+
+# --------------------------------------------------------------------------- #
+# Multiprocessing (Requirement 21.3)
+# --------------------------------------------------------------------------- #
+
+import pandas as pd  # noqa: E402
+
+from churnmaster.experiments.runner import default_workers  # noqa: E402
+
+MP_POLICIES = ("never_replace", "kademlia_epoch", "uniform_random", "heuristic",
+               "oracle_heuristic", "kademlia_std")
+MP_JOBS = [Job(p, "high_churn", Split.CALIBRATION, 0, ep) for ep in (0, 1) for p in MP_POLICIES]
+
+
+@pytest.fixture(scope="module")
+def mp_results(loader):
+    seq = run_jobs(MP_JOBS, cfg_loader=loader, keep_records=True)
+    par = run_jobs(MP_JOBS, cfg_loader=loader, keep_records=True, workers=2)
+    return seq, par
+
+
+def test_multiprocessing_matches_sequential(mp_results):
+    seq, par = mp_results
+    a, b = results_table(seq), results_table(par)
+    pd.testing.assert_frame_equal(a, b, check_exact=True)
+    assert list(b["policy"]) == [j.policy for j in MP_JOBS]
+    assert list(b["episode"]) == [j.episode for j in MP_JOBS]
+
+
+def test_multiprocessing_keep_records_match(mp_results):
+    for rs, rp in zip(*mp_results):
+        assert rs.lookups == rp.lookups and rs.decisions == rp.decisions
+        assert rs.gts == rp.gts and rs.transitions == rp.transitions
+        assert rs.ledger is not None and rp.ledger is not None
+        assert rs.ledger.score() == rp.ledger.score() or (
+            math.isnan(rs.ledger.score()) and math.isnan(rp.ledger.score()))
+        assert rs.ledger.total_reward() == rp.ledger.total_reward()
+        keys = {(d.bucket, d.epoch_idx) for d in rs.decisions}
+        assert all(rs.ledger.reward(b, k) == rp.ledger.reward(b, k) for b, k in keys)
+
+
+def test_workers_one_is_sequential_path(loader):
+    jobs = MP_JOBS[:2]
+    base = results_table(run_jobs(jobs, cfg_loader=loader))
+    for w in (None, 0, 1):
+        pd.testing.assert_frame_equal(results_table(run_jobs(jobs, cfg_loader=loader, workers=w)),
+                                      base, check_exact=True)
+
+
+def test_multiprocessing_rejects_unpicklable(loader):
+    with pytest.raises(TypeError, match="cfg_loader"):
+        run_jobs(MP_JOBS[:2], cfg_loader=lambda s: loader(s), workers=2)
+
+    class Local(NeverReplace):  # local class: not picklable
+        pass
+
+    with pytest.raises(TypeError, match="not picklable"):
+        run_jobs([Job(Local(), "high_churn", Split.CALIBRATION)] * 2, cfg_loader=loader,
+                 workers=2)
+    with pytest.raises(ValueError):
+        run_jobs(MP_JOBS[:2], cfg_loader=loader, workers=-1)
+
+
+def test_default_workers():
+    w = default_workers()
+    assert 1 <= w <= 8

@@ -1,9 +1,9 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-evaluate, reproduce. ``show-config``, ``simulate``, ``compare``, ``headroom``
-and ``diagnostics`` are implemented; the others are stubs that exit non-zero
-until their tasks land.
+evaluate, reproduce. ``show-config``, ``simulate``, ``compare``, ``headroom``,
+``diagnostics`` and ``train`` are implemented; the others are stubs that exit
+non-zero until their tasks land.
 """
 
 from __future__ import annotations
@@ -59,6 +59,12 @@ def _add_config_args(p: argparse.ArgumentParser, scenario: bool = True) -> None:
     exp.add_argument("--experiment-file", default=None, metavar="PATH",
                      help="experiment TOML file (any path; same layer as --experiment)")
     p.add_argument("--configs-dir", default=None, help="override the configs directory")
+
+
+def _add_workers_arg(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--workers", type=int, default=1, metavar="N",
+                   help="parallel worker processes (default 1 = sequential; results are "
+                        "identical for any N)")
 
 
 def cmd_show_config(args: argparse.Namespace) -> int:
@@ -145,6 +151,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return fail(str(e))
     if args.seeds < 1 or args.run < 0:
         return fail("--seeds must be >= 1 and --run >= 0")
+    if args.workers < 1:
+        return fail("--workers must be >= 1")
     scenarios = _split_list(args.scenario, "high_churn")
     policies = _split_list(args.policies, ",".join(DEFAULT_COMPARE_POLICIES))
     if "matched_random" in policies:
@@ -161,12 +169,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
     jobs = [Job(p, s, split, args.run, ep)
             for s in scenarios for p in policies for ep in range(args.seeds)]
     t0 = time.perf_counter()
-    df = results_table(run_jobs(jobs, cfg_loader=loader))
+    df = results_table(run_jobs(jobs, cfg_loader=loader, workers=args.workers))
     wall_s = time.perf_counter() - t0
     summary = summary_by_policy(df)
 
     print(f"compare: split={split.name.lower()} run={args.run} seeds={args.seeds} "
-          f"jobs={len(jobs)} wall={wall_s:.1f}s")
+          f"jobs={len(jobs)} workers={args.workers} wall={wall_s:.1f}s")
     headers = ["scenario", "policy", "shares_dp", "n", *COMPARE_PRINT_METRICS]
     rows = [[r["scenario"], r["policy"], str(bool(r["shares_decision_points"])), str(r["n"]),
              *(_fmt_pm(r[f"{m}_mean"], r[f"{m}_std"]) for m in COMPARE_PRINT_METRICS)]
@@ -208,8 +216,8 @@ def cmd_headroom(args: argparse.Namespace) -> int:
                                                   run_headroom, write_outputs)
     from churnmaster.experiments.runner import parse_split
 
-    if args.seeds < 1:
-        print("churnmaster headroom: --seeds must be >= 1", file=sys.stderr)
+    if args.seeds < 1 or args.workers < 1:
+        print("churnmaster headroom: --seeds and --workers must be >= 1", file=sys.stderr)
         return 1
     try:
         split = parse_split(args.seed_split)
@@ -222,7 +230,7 @@ def cmd_headroom(args: argparse.Namespace) -> int:
     t0 = time.perf_counter()
     rep = run_headroom(root, exp, n_seeds=args.seeds, seed_split=split,
                        manifest_path=manifest_path_for(out),
-                       progress=lambda m: print(m, flush=True))
+                       progress=lambda m: print(m, flush=True), workers=args.workers)
     files = write_outputs(rep, out)
     wall = time.perf_counter() - t0
 
@@ -274,8 +282,8 @@ def cmd_diagnostics(args: argparse.Namespace) -> int:
         print(f"churnmaster diagnostics: {msg}", file=sys.stderr)
         return 1
 
-    if args.episodes < 1 or args.horizon < 1:
-        return fail("--episodes and --horizon must be >= 1")
+    if args.episodes < 1 or args.horizon < 1 or args.workers < 1:
+        return fail("--episodes, --horizon and --workers must be >= 1")
     try:
         split = parse_split(args.seed_split)
     except ValueError as e:
@@ -287,7 +295,8 @@ def cmd_diagnostics(args: argparse.Namespace) -> int:
                               experiment_path=_experiment_path(args), n_episodes=args.episodes,
                               split=split, scenarios=scenarios, gamma=args.gamma,
                               horizon=args.horizon, per_seed_csv=args.per_seed_csv,
-                              progress=(lambda m: print(m, flush=True)) if args.verbose else None)
+                              progress=(lambda m: print(m, flush=True)) if args.verbose else None,
+                              workers=args.workers)
     except FrozenEnvError as e:
         return fail(str(e))
     files = write_outputs(rep, Path(args.out))
@@ -317,6 +326,71 @@ def cmd_diagnostics(args: argparse.Namespace) -> int:
               f"rho={s.rho:+.3f} p={s.p:.3g}")
     print(f"wrote {len(files)} files to {args.out}")
     return 0 if rep.all_passed else DIAG_FAILED_EXIT
+
+
+def cmd_train(args: argparse.Namespace) -> int:
+    """Train the Q-learning agent (Requirement 24): ``--mode debug|grid|final``.
+
+    Exit codes: 0 on success; 1 on usage errors or a frozen-env mismatch.
+    """
+    from churnmaster.experiments.runner import FrozenEnvError
+    from churnmaster.experiments.train import run_training
+
+    def fail(msg: str) -> int:
+        print(f"churnmaster train: {msg}", file=sys.stderr)
+        return 1
+
+    for name in ("episodes", "runs", "validate_every", "validation_seeds"):
+        v = getattr(args, name)
+        if v is not None and v < 1:
+            return fail(f"--{name.replace('_', '-')} must be >= 1")
+    if args.workers < 1:
+        return fail("--workers must be >= 1")
+    root = _configs_root(args)
+    exp = _experiment_path(args) or root / "experiments" / "train.toml"
+    out = Path(args.out) if args.out else Path("results/train") / args.mode
+    try:
+        rep = run_training(args.mode, root, experiment_path=exp, manifest_path=Path(args.manifest),
+                           out_dir=out, episodes=args.episodes, runs=args.runs, gamma=args.gamma,
+                           alpha_min=args.alpha_min, validate_every=args.validate_every,
+                           validation_seeds=args.validation_seeds, grid_dir=args.grid_dir,
+                           allow_unfrozen=args.allow_unfrozen, workers=args.workers,
+                           log_every=args.log_every,
+                           progress=lambda m: print(m, flush=True))
+    except FrozenEnvError as e:
+        return fail(str(e))
+    except ValueError as e:
+        return fail(str(e))
+
+    print(f"train: mode={rep.mode} scenarios={','.join(rep.scenarios)} "
+          f"validation_seeds={rep.validation_seeds} wall={rep.wall_s:.1f}s"
+          + ("" if rep.frozen_checked else " (UNFROZEN: env check skipped)"))
+    ref = rep.references.groupby(["scenario", "policy"], sort=False)["J"].mean()
+    for (scn, pol), j in ref.items():
+        print(f"  reference {scn:<11} {pol:<17} J={j:.4f}")
+    for rr in rep.runs:
+        means = rr.validation.groupby(["checkpoint", "scenario"])["J"].mean().unstack()
+        print(f"run {rr.settings.tag}/run{rr.run} ({rr.wall_s:.0f}s train): validation J by checkpoint")
+        for c, row in means.iterrows():
+            print(f"  ep {int(c):>4}  " + "  ".join(f"{s}={row[s]:.4f}" for s in means.columns))
+        i4 = rr.i4
+        for name, c in i4["comparisons"].items():
+            print(f"  I4 final-vs-{name:<15} dJ={_fmt_ci(c)} beats={c['beats']}")
+        dq = i4["dq"]
+        print(f"  I4 |dQ| first{dq['window']}={dq['first_mean']:.4g} last{dq['window']}="
+              f"{dq['last_mean']:.4g} shrinks={dq['shrinks']}  -> I4 {'PASS' if i4['passed'] else 'FAIL'}")
+        g = rr.greedy
+        w = g["actions"]["weighted"]
+        print(f"  greedy (visit-weighted): KEEP={w['KEEP']:.3f} PROBE={w['PROBE']:.3f} "
+              f"REPLACE={w['REPLACE']:.3f}; inc_fail>=2 not-KEEP="
+              f"{g['inc_fail_ge2']['weighted']['frac_not_keep']:.3f}; healthy KEEP="
+              f"{g['healthy']['weighted']['frac_keep']:.3f}")
+    if rep.selected is not None:
+        print(rep.grid.to_string(index=False))
+        print(f"selected: gamma={rep.selected['gamma']} alpha_min={rep.selected['alpha_min']} "
+              f"({rep.selected['reason']})")
+    print(f"wrote outputs to {rep.out_dir}")
+    return 0
 
 
 def _stub(name: str):
@@ -359,6 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", type=int, default=0, help="run index (default 0; ignored for eval)")
     p.add_argument("--out", default=None, metavar="DIR",
                    help="write per_seed.csv, summary.csv and bar charts to DIR")
+    _add_workers_arg(p)
     p.set_defaults(func=cmd_compare)
 
     p = sub.add_parser("headroom", help="run the headroom gate study and freeze the env")
@@ -369,6 +444,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="environment split (default calibration)")
     p.add_argument("--out", default="results/headroom", metavar="DIR",
                    help="output directory (default results/headroom)")
+    _add_workers_arg(p)
     p.set_defaults(func=cmd_headroom)
 
     p = sub.add_parser("diagnostics", help="reward-identity, reward-sanity, coverage and "
@@ -389,10 +465,35 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default="results/diagnostics", metavar="DIR",
                    help="output directory (default results/diagnostics)")
     p.add_argument("--verbose", action="store_true", help="print per-episode progress")
+    _add_workers_arg(p)
     p.set_defaults(func=cmd_diagnostics)
 
+    p = sub.add_parser("train", help="train the Q-learning agent (debug, grid or final mode)")
+    _add_config_args(p, scenario=False)
+    p.add_argument("--mode", choices=("debug", "grid", "final"), default="debug",
+                   help="debug (default): high_churn 1x100; grid: gamma x alpha_min; "
+                        "final: 3 runs with the grid selection")
+    p.add_argument("--episodes", type=int, default=None, help="override training episodes")
+    p.add_argument("--runs", type=int, default=None, help="override number of runs")
+    p.add_argument("--gamma", type=float, default=None, help="override gamma")
+    p.add_argument("--alpha-min", type=float, default=None, help="override alpha_min")
+    p.add_argument("--validate-every", type=int, default=None, help="override checkpoint period")
+    p.add_argument("--validation-seeds", type=int, default=None,
+                   help="override validation seeds per scenario")
+    p.add_argument("--grid-dir", default=None, metavar="DIR",
+                   help="grid output with selected.json (final mode; default <out>/../grid)")
+    p.add_argument("--manifest", default="results/headroom/manifest.json",
+                   help="frozen env manifest (default results/headroom/manifest.json)")
+    p.add_argument("--allow-unfrozen", action="store_true",
+                   help="skip the frozen-env check (tests / debugging only)")
+    p.add_argument("--out", default=None, metavar="DIR",
+                   help="output directory (default results/train/<mode>)")
+    p.add_argument("--log-every", type=int, default=0, metavar="N",
+                   help="print a training progress line every N episodes (default off)")
+    _add_workers_arg(p)
+    p.set_defaults(func=cmd_train)
+
     helps = {
-        "train": "train the Q-learning agent",
         "evaluate": "evaluate policies on test seeds",
         "reproduce": "regenerate all tables and figures",
     }

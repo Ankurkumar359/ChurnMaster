@@ -57,7 +57,7 @@ def test_all_eight_commands_registered():
 
 @pytest.mark.parametrize("name", [c for c in COMMANDS
                                   if c not in ("show-config", "simulate", "compare", "headroom",
-                                               "diagnostics")])
+                                               "diagnostics", "train")])
 def test_stub_commands_exit_nonzero(name, capsys):
     assert main([name]) != 0
     assert "not implemented yet" in capsys.readouterr().err

@@ -265,8 +265,12 @@ class TuningResult:
 
 def tune_env(loader: Callable[[str], Config], tuning: TuningConfig, gates: GatesConfig, *,
              n_seeds: int, split: Split, run: int = 0, stats: StatsConfig | None = None,
-             progress: Callable[[str], None] | None = None) -> TuningResult:
-    """G1-failure fallback: search the sim grid on high_churn calibration seeds."""
+             progress: Callable[[str], None] | None = None,
+             workers: int | None = None) -> TuningResult:
+    """G1-failure fallback: search the sim grid on high_churn calibration seeds.
+
+    ``workers`` is passed to :func:`run_jobs` (``loader`` must be picklable when > 1).
+    """
     stats = stats or StatsConfig()
     cfg0 = loader(GATE_SCENARIO)
     default = {f: getattr(cfg0.sim, f) for f in TUNED_FIELDS}
@@ -275,7 +279,7 @@ def tune_env(loader: Callable[[str], Config], tuning: TuningConfig, gates: Gates
         tl = TunedLoader(loader, tuple(sorted(setting.items())))
         jobs = [Job(p, GATE_SCENARIO, split, run, ep)
                 for p in GATE_POLICIES for ep in range(n_seeds)]
-        df = results_table(run_jobs(jobs, cfg_loader=tl))
+        df = results_table(run_jobs(jobs, cfg_loader=tl, workers=workers))
         res = evaluate_gates(df, gates, n_resamples=stats.bootstrap_resamples,
                              level=stats.ci_level)
         best = res.candidate(res.best)
@@ -338,10 +342,12 @@ def run_headroom(configs_dir: Path | str, experiment_path: Path | str | None = N
                  policies: Sequence[str] = DEFAULT_POLICIES,
                  seed_split: Split = Split.CALIBRATION, run: int = 0,
                  manifest_path: Path | str | None = None,
-                 progress: Callable[[str], None] | None = None) -> HeadroomReport:
+                 progress: Callable[[str], None] | None = None,
+                 workers: int | None = None) -> HeadroomReport:
     """Run the headroom study, the G1 fallback if needed, and freeze the env.
 
     ``manifest_path`` (default: none written) receives the frozen-env manifest.
+    ``workers`` is passed to :func:`run_jobs` (results do not depend on it).
     """
     configs_dir = Path(configs_dir)
     if GATE_SCENARIO not in scenarios:
@@ -361,7 +367,7 @@ def run_headroom(configs_dir: Path | str, experiment_path: Path | str | None = N
     if progress:
         progress(f"headroom: {len(jobs)} episodes ({len(policies)} policies x "
                  f"{len(scenarios)} scenarios x {n_seeds} seeds)")
-    results = run_jobs(jobs, cfg_loader=loader)
+    results = run_jobs(jobs, cfg_loader=loader, workers=workers)
     df = results_table(results)
     gate = evaluate_gates(df, gates_cfg, n_resamples=stats_cfg.bootstrap_resamples,
                           level=stats_cfg.ci_level)
@@ -372,7 +378,7 @@ def run_headroom(configs_dir: Path | str, experiment_path: Path | str | None = N
         if progress:
             progress("G1 failed on the default env; running the tuning fallback")
         tuning = tune_env(loader, tuning_cfg, gates_cfg, n_seeds=n_seeds, split=seed_split,
-                          run=run, stats=stats_cfg, progress=progress)
+                          run=run, stats=stats_cfg, progress=progress, workers=workers)
         overrides = tuning.chosen
 
     freeze_loader = TunedLoader(loader, tuple(sorted((overrides or {}).items())))

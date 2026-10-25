@@ -297,3 +297,10 @@ def test_run_diagnostics_end_to_end_short(tmp_path, short_exp):
     assert json.loads((tmp_path / "out" / "diagnostics.json").read_text())["n_episodes"] == 2
     cov_df = pd.read_csv(tmp_path / "out" / "coverage.csv")
     assert set(cov_df["scope"]) == {"high_churn", "pooled"}
+    # Requirement 21.3: identical report with a process pool
+    rep2 = run_diagnostics(CONFIGS, man, experiment_path=short_exp, n_episodes=2,
+                           scenarios=("high_churn",), n_resamples=200, split=Split.CALIBRATION,
+                           spearman_policies=("never_replace", "always_replace", "kademlia_epoch"),
+                           spearman_seeds=1, workers=2)
+    assert rep2.to_dict() == d
+    assert rep2.coverage["high_churn"].visits == cov.visits

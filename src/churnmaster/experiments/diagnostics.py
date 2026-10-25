@@ -51,7 +51,7 @@ import pandas as pd
 
 from churnmaster.actions import Action
 from churnmaster.experiments.runner import (ConfigLoader, EpisodeResult, Job, check_frozen,
-                                            read_manifest, results_table, run_job, run_jobs)
+                                            read_manifest, results_table, run_jobs)
 from churnmaster.experiments.stats import TwoSampleCI, two_sample_bootstrap_ci
 from churnmaster.rl.ledger import Ledger
 from churnmaster.rl.state import TIER_SECOND, TIER_TOP, decode
@@ -510,14 +510,17 @@ def run_diagnostics(configs_dir: Path | str, manifest_path: Path | str, *,
                     per_seed_csv: Path | str | None = None,
                     spearman_policies: Sequence[str] | None = None, spearman_seeds: int = 10,
                     n_resamples: int = 10_000, level: float = 0.95, seed: int = 0,
-                    progress: Callable[[str], None] | None = None) -> DiagnosticsReport:
+                    progress: Callable[[str], None] | None = None,
+                    workers: int | None = None) -> DiagnosticsReport:
     """Run all four diagnostics on ``n_episodes`` uniform_random episodes per scenario.
 
     Every scenario config is checked against the frozen manifest first
     (``FrozenEnvError`` on mismatch; nothing is run). Spearman uses
     ``per_seed_csv`` (headroom per-seed table) when it exists, else runs
     ``spearman_policies`` (default: the headroom policies) on
-    ``spearman_seeds`` episodes of ``split``.
+    ``spearman_seeds`` episodes of ``split``. ``workers`` is passed to
+    :func:`run_jobs` (results do not depend on it; progress lines then appear
+    after each scenario's batch).
     """
     configs_dir, manifest_path = Path(configs_dir), Path(manifest_path)
     exp = None if experiment_path is None else Path(experiment_path)
@@ -530,15 +533,18 @@ def run_diagnostics(configs_dir: Path | str, manifest_path: Path | str, *,
     visits: dict[str, Counter] = {}
     for s in scenarios:
         errs[s], samples[s], visits[s] = [], [], Counter()
-        for ep in range(n_episodes):
-            r = run_job(Job(DIAG_POLICY, s, split, run, ep), cfg=cfgs[s], keep_records=True)
+        # One batch per scenario bounds memory to n_episodes record sets.
+        batch = run_jobs([Job(DIAG_POLICY, s, split, run, ep) for ep in range(n_episodes)],
+                         cfg_loader=loader, keep_records=True, workers=workers)
+        for ep, r in enumerate(batch):
             errs[s].append(identity_errors(r.metrics.J, r.ledger, r.lookups, r.decisions))
             samples[s] += decision_samples(r.decisions, r.gts, r.ledger.reward, gamma, horizon,
                                            scenario=s, episode=ep)
             visits[s].update(state_visits(r.decisions))
             if progress:
                 progress(f"diagnostics: {s} episode {ep + 1}/{n_episodes} J={r.metrics.J:.4f}")
-            del r
+            batch[ep] = None  # type: ignore[call-overload]  # free records as we go
+        del batch
 
     kw = dict(n_resamples=n_resamples, level=level, seed=seed)
     identity = {s: _identity_report(errs[s]) for s in scenarios}
@@ -565,7 +571,7 @@ def run_diagnostics(configs_dir: Path | str, manifest_path: Path | str, *,
                      f"for the J/success Spearman")
         jobs = [Job(p, s, split, run, ep) for s in scenarios for p in pols
                 for ep in range(spearman_seeds)]
-        df = results_table(run_jobs(jobs, cfg_loader=lambda s: cfgs[s]))
+        df = results_table(run_jobs(jobs, cfg_loader=loader, workers=workers))
         source = f"ran {pols} x {spearman_seeds} {split.name.lower()} seeds"
 
     return DiagnosticsReport(

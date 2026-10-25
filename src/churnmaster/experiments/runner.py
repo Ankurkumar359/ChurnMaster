@@ -2,9 +2,10 @@
 
 A *job* is one ``(policy, scenario, split, run, episode)`` episode. Jobs are
 plain picklable dataclasses (the policy is normally given by its name), so
-the sequential :func:`run_jobs` can later be swapped for a process pool
-(task 8.4) with identical results: every job builds its own config, env and
-policy from scratch and depends on nothing but its own fields.
+:func:`run_jobs` can run them in a process pool (``workers > 1``, task 8.4)
+with results identical to sequential execution (Requirement 21.3): every job
+builds its own config, env and policy from scratch and depends on nothing
+but its own fields.
 
 Policy names (:func:`make_policy`)
 ----------------------------------
@@ -36,6 +37,10 @@ not reuse the same random draws and results do not depend on job order.
 from __future__ import annotations
 
 import math
+import multiprocessing
+import os
+import pickle
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -60,7 +65,8 @@ __all__ = [
     "ENV_SPLITS", "POLICY_IDS", "POLICY_NAMES", "DEFAULT_COMPARE_POLICIES",
     "NoMaintenance", "ConfigLoader", "Job", "EpisodeResult",
     "parse_split", "policy_env_mode", "make_policy", "job_baseline_rng",
-    "run_job", "run_jobs", "run_episode", "results_table", "summary_by_policy",
+    "run_job", "run_jobs", "default_workers", "run_episode", "results_table",
+    "summary_by_policy",
 ]
 
 ENV_SPLITS = ("calibration", "train", "validation", "eval", "test")
@@ -320,12 +326,91 @@ def _check_identity(J: float, score: float, job: Job) -> None:
             f"/run={job.run}/ep={job.episode}: metrics.J={J!r} != ledger.score()={score!r}")
 
 
+def default_workers() -> int:
+    """Default pool size: ``min(cpu_count − 1, 8)``, at least 1."""
+    return max(1, min((os.cpu_count() or 1) - 1, 8))
+
+
+#: Per-process config cache of the pool workers, keyed by ``(loader, scenario)``.
+_WORKER_CFG_CACHE: dict[tuple[Any, str], Config] = {}
+
+
+def _worker_config(cfg_loader: Callable[[str], Config], scenario: str) -> Config:
+    key = (cfg_loader, scenario)
+    try:
+        hash(key)
+    except TypeError:          # unhashable loader: no cache
+        return cfg_loader(scenario)
+    cfg = _WORKER_CFG_CACHE.get(key)
+    if cfg is None:
+        cfg = _WORKER_CFG_CACHE[key] = cfg_loader(scenario)
+    return cfg
+
+
+def _run_job_worker(args: tuple[Job, Callable[[str], Config], bool]) -> EpisodeResult:
+    """Pool entry point (module level, so it pickles under ``spawn``)."""
+    job, cfg_loader, keep_records = args
+    return run_job(job, cfg=_worker_config(cfg_loader, job.scenario), keep_records=keep_records)
+
+
+def _check_picklable(cfg_loader: Callable[[str], Config], jobs: Sequence[Job]) -> None:
+    """Fail early with a clear message instead of a pool-side pickling error."""
+    try:
+        pickle.dumps(cfg_loader)
+    except Exception as e:  # noqa: BLE001 -- PicklingError, AttributeError, TypeError, ...
+        raise TypeError(f"run_jobs(workers>1) needs a picklable cfg_loader (e.g. ConfigLoader "
+                        f"or TunedLoader, not a lambda/closure): {e}") from e
+    seen: set[int] = set()
+    for j in jobs:
+        if isinstance(j.policy, str) or id(j.policy) in seen:
+            continue
+        seen.add(id(j.policy))
+        try:
+            pickle.dumps(j)
+        except Exception as e:  # noqa: BLE001
+            raise TypeError(f"run_jobs(workers>1): job with policy {j.policy_name!r} is not "
+                            f"picklable; pass the policy by name or use a picklable policy "
+                            f"object (no lambdas/closures): {e}") from e
+
+
 def run_jobs(jobs: Iterable[Job], configs_dir: Path | None = None, *,
              cfg_loader: Callable[[str], Config] | None = None,
-             keep_records: bool = False) -> list[EpisodeResult]:
-    """Run jobs sequentially; results are in job order."""
+             keep_records: bool = False, workers: int | None = None,
+             chunksize: int = 1) -> list[EpisodeResult]:
+    """Run jobs; results are in job order (Requirement 21.3).
+
+    ``workers`` None/0/1 runs sequentially in this process. ``workers > 1``
+    uses a ``ProcessPoolExecutor`` with the ``spawn`` start method (the
+    Windows default; also used elsewhere for identical behavior); results
+    come back in job order (``executor.map``) and are identical to the
+    sequential ones, because every job depends only on its own fields (env
+    and random-baseline streams are seeded per job). Each worker process
+    loads configs via ``cfg_loader`` and caches them per ``(loader,
+    scenario)``. With ``workers > 1`` the loader and any ``Policy`` objects
+    in ``jobs`` must be picklable (``TypeError`` otherwise; policy names are
+    preferred), and per-transition hooks (``run_job(on_transition=...)``)
+    are not available. Callers using workers must guard their entry point
+    with ``if __name__ == "__main__":`` (spawn re-imports ``__main__``).
+    """
     if cfg_loader is None and configs_dir is not None:
         cfg_loader = ConfigLoader(Path(configs_dir))
+    jobs = list(jobs)
+    if workers is not None and workers < 0:
+        raise ValueError(f"workers must be >= 0, got {workers}")
+    if chunksize < 1:
+        raise ValueError(f"chunksize must be >= 1, got {chunksize}")
+
+    if workers is not None and workers > 1 and len(jobs) > 1:
+        if cfg_loader is None:
+            raise ValueError("run_jobs needs cfg_loader or configs_dir")
+        _check_picklable(cfg_loader, jobs)
+        n = min(int(workers), len(jobs))
+        with ProcessPoolExecutor(max_workers=n,
+                                 mp_context=multiprocessing.get_context("spawn")) as ex:
+            return list(ex.map(_run_job_worker,
+                               [(j, cfg_loader, keep_records) for j in jobs],
+                               chunksize=chunksize))
+
     cache: dict[str, Config] = {}
 
     def load(scenario: str) -> Config:

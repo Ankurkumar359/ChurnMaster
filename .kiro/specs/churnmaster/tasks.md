@@ -227,21 +227,21 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - **Property 24: Transition construction**
     - **Validates: Requirements 15.6, 15.7**
 
-- [ ] 8. Q-learning and training
-  - [ ] 8.1 Implement `rl/qlearning.py`
+- [x] 8. Q-learning and training
+  - [x] 8.1 Implement `rl/qlearning.py`
     - QAgent (648×3 Q init 0, counts N), masked ε-greedy `act` with fixed tie order KEEP<PROBE<REPLACE, `update` with α_n = max(α_min,(1+n)^−0.7), `epsilon` schedule, `.npy` save/load
     - `tests/test_qlearning.py`: hand-computed update, toy 2-state MDP within 0.05 of analytic Q, masking, schedules, save/load
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.7_
-  - [ ] 8.2 Implement `policies/learned.py`
+  - [x] 8.2 Implement `policies/learned.py`
     - Greedy policy over a frozen Q-table via `discretize`/`encode`/`allowed_actions`
     - `tests/test_learned.py`: greedy choice and masking on a fixed table
     - _Requirements: 16.4_
-  - [ ] 8.3 Implement `experiments/train.py` and `train` command
+  - [x] 8.3 Implement `experiments/train.py` and `train` command
     - Training loop: 200 episodes alternating stable/high_churn, learning in warm-up and measured periods, transitions from Ledger; validation at episodes 0, 20, …, 200 on 5 validation seeds per training scenario (ε=0); `.npy` snapshots, `.csv` curves, mean |ΔQ| per episode
     - Modes: 8a debug (high_churn, 1 run, 100 ep), 8b grid γ{0.8,0.9}×α_min{0.02,0.05} selected by mean validation J over last 3 checkpoints, 8c 3 runs; I4 check (final vs episode-0 paired CI, shrinking |ΔQ|)
     - `configs/experiments/train.toml`, `cli train`; `tests/test_train.py`: short training is deterministic, snapshots/curves written, grid selection logic
     - _Requirements: 16.6, 24.1, 24.2, 24.3, 24.4, 24.5, 24.6_
-  - [ ] 8.4 Add multiprocessing to `experiments/runner.py`
+  - [x] 8.4 Add multiprocessing to `experiments/runner.py`
     - Process pool over jobs with deterministic ordering of results
     - Extend `tests/test_runner.py`: multiprocessing results equal sequential results
     - _Requirements: 21.3_
@@ -254,7 +254,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
   - [ ]* 8.7 Write property test for Q-table persistence
     - **Property 27: Q-table save/load round-trip**
     - **Validates: Requirements 16.5**
-  - [ ] 8.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 8.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Heuristic tuning, matched random, evaluation, statistics
   - [ ] 9.1 Implement `experiments/tune_heuristic.py`
