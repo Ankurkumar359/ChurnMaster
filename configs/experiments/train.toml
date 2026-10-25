@@ -1,0 +1,21 @@
+# Training protocol (Task 8, Requirement 24)
+[experiment]
+name = "train"
+split = "train"
+scenarios = ["stable", "high_churn"]   # alternated by episode (even: stable, odd: high_churn)
+validation_seeds = 5                   # per training scenario
+last_checkpoints = 3                   # grid selection window
+
+[experiment.debug]
+scenario = "high_churn"
+runs = 1
+episodes = 100
+
+[experiment.grid]
+gamma = [0.8, 0.9]
+alpha_min = [0.02, 0.05]
+
+[agent]
+episodes = 200
+runs = 3
+validate_every = 20

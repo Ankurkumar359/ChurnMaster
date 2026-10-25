@@ -1,0 +1,9 @@
+# heldout_medium (unseen in training): share 0.45, stable session 2 h, flaky session 10 min, downtime 12 min
+[scenario]
+name = "heldout_medium"
+stable_share = 0.45
+stable_session_mean_s = 7200.0
+flaky_session_mean_s = 600.0
+downtime_mean_s = 720.0
+weibull_shape = 0.6
+burn_in_s = 7200

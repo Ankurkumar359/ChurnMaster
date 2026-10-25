@@ -1,0 +1,19 @@
+# Headroom gate and env freeze (Task 6, Requirement 22)
+[experiment]
+name = "headroom"
+split = "calibration"
+n_seeds = 10
+scenarios = ["stable", "high_churn"]
+policies = ["never_replace", "kademlia_epoch", "always_replace", "oracle_heuristic"]
+
+[experiment.gates]
+g1_min_success_pp = 5.0
+g2_min_success_pp = 1.5
+g2_max_ping_ratio = 0.6
+g2_success_tol_pp = 0.5
+
+# G1-failure tuning grid (calibration seeds only)
+[experiment.tuning]
+deadline_ms = [1000, 1500, 2000]
+p_loss = [0.01, 0.02, 0.05]
+replicas = [1, 2, 3]

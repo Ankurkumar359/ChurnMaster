@@ -1,0 +1,21 @@
+# Locked evaluation and statistics (Task 9, Requirement 25)
+[experiment]
+name = "eval"
+split = "eval"
+n_seeds = 20
+scenarios = ["stable", "high_churn", "heldout_medium"]
+policies = [
+    "never_replace",
+    "always_replace",
+    "uniform_random",
+    "matched_random",
+    "kademlia_epoch",
+    "kademlia_std",
+    "heuristic",
+    "learned",
+    "oracle_heuristic",
+]
+
+[experiment.stats]
+bootstrap_resamples = 10000
+ci_level = 0.95

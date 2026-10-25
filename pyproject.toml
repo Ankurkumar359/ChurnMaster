@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools==75.6.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "churnmaster"
+version = "0.1.0"
+description = "Tabular Q-learning for adaptive peer replacement in a simulated Kademlia-like DHT under churn"
+readme = "README.md"
+requires-python = ">=3.11"
+# Exact pins (Requirement 26.5). No Gymnasium dependency.
+dependencies = [
+    "numpy==2.1.3",
+    "scipy==1.14.1",
+    "pandas==2.2.3",
+    "matplotlib==3.9.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "hypothesis==6.115.0",
+]
+
+[project.scripts]
+churnmaster = "churnmaster.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: long-running tests (episode timing, multi-episode diagnostics)",
+]

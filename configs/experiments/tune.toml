@@ -1,0 +1,6 @@
+# Heuristic tuning (Task 9.1, Requirement 25.1)
+[experiment]
+name = "tune"
+split = "train"
+n_seeds = 10
+scenarios = ["stable", "high_churn"]

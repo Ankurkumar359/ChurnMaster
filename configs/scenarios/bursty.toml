@@ -1,0 +1,20 @@
+# bursty (Task 11, optional): share 0.50, stable session 2 h, flaky session 15 min, downtime 15 min
+[scenario]
+name = "bursty"
+stable_share = 0.50
+stable_session_mean_s = 7200.0
+flaky_session_mean_s = 900.0
+downtime_mean_s = 900.0
+weibull_shape = 0.6
+burn_in_s = 7200
+
+# Correlated failures: every ~15 min (exponential gaps) 20% of online nodes nearest a
+# uniformly random point leave within 10 s and return after Exp(mean 5 min);
+# nodes in that region have RTT x2 for 3 min.
+[scenario.bursts]
+gap_mean_s = 900.0
+fraction = 0.20
+leave_window_s = 10
+return_mean_s = 300.0
+rtt_mult = 2.0
+rtt_duration_s = 180

@@ -1,0 +1,9 @@
+# stable: share 0.70, stable session 4 h, flaky session 30 min, downtime 20 min
+[scenario]
+name = "stable"
+stable_share = 0.70
+stable_session_mean_s = 14400.0
+flaky_session_mean_s = 1800.0
+downtime_mean_s = 1200.0
+weibull_shape = 0.6
+burn_in_s = 7200

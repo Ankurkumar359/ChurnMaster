@@ -1,0 +1,47 @@
+# ChurnMaster base configuration (design defaults, Requirement 1.5).
+# Merge order: base -> scenario -> experiment (later layers override).
+
+root_seed = 20240601
+
+[sim]
+n_nodes = 128
+id_bits = 8
+k = 4
+alpha = 2
+replicas = 3
+cache_size = 4
+cache_ttl_s = 300
+rebuild_period_s = 300
+epoch_s = 30
+warmup_s = 600
+measured_s = 2400
+lookup_rate_hz = 1.0
+p_loss = 0.02
+timeout_ms = 500
+deadline_ms = 2000
+max_rounds = 8
+rtt_base_ms = 10.0
+rtt_span_ms = 240.0
+rtt_sigma = 0.25
+congestion_share = 0.10
+congestion_len_s = 120
+congestion_gap_s = 1200
+congestion_mult = 3.0
+window_timeout_s = 120
+rtt_beta = 0.3
+
+[reward]
+w_L = 0.3
+w_M = 0.2
+w_R = 0.3
+
+[agent]
+gamma = 0.9
+alpha_min = 0.05
+alpha_exp = 0.7
+eps_start = 1.0
+eps_end = 0.05
+eps_decay_frac = 0.6
+episodes = 200
+runs = 3
+validate_every = 20

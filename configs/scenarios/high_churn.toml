@@ -1,0 +1,9 @@
+# high_churn: share 0.30, stable session 1 h, flaky session 5 min, downtime 10 min
+[scenario]
+name = "high_churn"
+stable_share = 0.30
+stable_session_mean_s = 3600.0
+flaky_session_mean_s = 300.0
+downtime_mean_s = 600.0
+weibull_shape = 0.6
+burn_in_s = 7200
