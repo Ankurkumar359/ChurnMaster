@@ -19,7 +19,7 @@ SCN = ScenarioConfig(name="high_churn", stable_share=0.3, stable_session_mean_s=
 
 
 def _cfg(**sim) -> Config:
-    return Config(sim=SimConfig(**sim), scenario=SCN, reward=RewardConfig(),
+    return Config(sim=SimConfig(**sim), scenario=SCN, reward=RewardConfig(w_L=0.3, w_M=0.2, w_R=0.3),
                   agent=AgentConfig(), experiment=ExperimentConfig(), root_seed=7)
 
 

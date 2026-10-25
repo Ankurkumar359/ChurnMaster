@@ -120,8 +120,8 @@ class ScenarioConfig:
 @dataclass(frozen=True)
 class RewardConfig:
     w_L: float = _f(0.3, NONNEG)
-    w_M: float = _f(0.2, NONNEG)
-    w_R: float = _f(0.3, NONNEG)
+    w_M: float = _f(0.1, NONNEG)   # revised from 0.2 (reward diagnostics, task 7.3)
+    w_R: float = _f(0.15, NONNEG)  # revised from 0.3 (reward diagnostics, task 7.3)
 
 
 @dataclass(frozen=True)

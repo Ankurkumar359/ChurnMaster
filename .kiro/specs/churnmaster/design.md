@@ -144,7 +144,9 @@ class ScenarioConfig:
 
 @dataclass(frozen=True)
 class RewardConfig:
-    w_L: float = 0.3; w_M: float = 0.2; w_R: float = 0.3
+    w_L: float = 0.3; w_M: float = 0.1; w_R: float = 0.15
+    # (revised: w_M 0.1, w_R 0.15 per user decision after reward diagnostics, task 7.3;
+    #  originally w_M=0.2, w_R=0.3)
 
 @dataclass(frozen=True)
 class AgentConfig:

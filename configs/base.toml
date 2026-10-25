@@ -32,8 +32,8 @@ rtt_beta = 0.3
 
 [reward]
 w_L = 0.3
-w_M = 0.2
-w_R = 0.3
+w_M = 0.1   # revised from 0.2 after reward diagnostics (task 7.3)
+w_R = 0.15  # revised from 0.3 after reward diagnostics (task 7.3)
 
 [agent]
 gamma = 0.9

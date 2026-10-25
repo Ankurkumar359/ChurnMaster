@@ -52,7 +52,7 @@ ChurnMaster is a research codebase that evaluates tabular Q-learning for adaptiv
 2. THE Config_Loader SHALL represent the merged configuration as frozen dataclasses.
 3. IF a configuration contains an unknown key, a value of the wrong type, or an out-of-range value, THEN THE Config_Loader SHALL raise a ConfigError that names the offending key.
 4. THE Config_Loader SHALL compute `config_hash` as the SHA-256 of a canonical JSON serialization of the merged configuration.
-5. THE Config_Loader SHALL provide defaults of 128 nodes, 8-bit IDs, k=4, α=2, 3 replicas, cache size 4, cache TTL 300 s, rebuild period 300 s, epoch 30 s, warm-up 600 s, measured 2400 s, lookup rate 1/s, p_loss 0.02, timeout 500 ms, deadline 2000 ms, 8 max rounds, w_L=0.3, w_M=0.2, w_R=0.3, and γ=0.9.
+5. THE Config_Loader SHALL provide defaults of 128 nodes, 8-bit IDs, k=4, α=2, 3 replicas, cache size 4, cache TTL 300 s, rebuild period 300 s, epoch 30 s, warm-up 600 s, measured 2400 s, lookup rate 1/s, p_loss 0.02, timeout 500 ms, deadline 2000 ms, 8 max rounds, w_L=0.3, w_M=0.1, w_R=0.15, and γ=0.9 (revised: w_M 0.1, w_R 0.15 per user decision after reward diagnostics, task 7.3; originally w_M=0.2, w_R=0.3).
 6. THE ChurnMaster SHALL ship scenario configs for stable (0.7, 4 h, 30 min, 20 min), high_churn (0.3, 1 h, 5 min, 10 min), heldout_medium (0.45, 2 h, 10 min, 12 min), and bursty (0.5, 2 h, 15 min, 15 min), given as stable share, stable mean session, flaky mean session, and mean downtime.
 7. WHEN the CLI `show-config` command is invoked, THE CLI SHALL print the merged configuration and its config_hash.
 

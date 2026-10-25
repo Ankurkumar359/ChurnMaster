@@ -71,7 +71,7 @@ def test_defaults_match_requirement_1_5():
     assert (s.cache_size, s.cache_ttl_s, s.rebuild_period_s, s.epoch_s) == (4, 300, 300, 30)
     assert (s.warmup_s, s.measured_s, s.lookup_rate_hz, s.p_loss) == (600, 2400, 1.0, 0.02)
     assert (s.timeout_ms, s.deadline_ms, s.max_rounds) == (500, 2000, 8)
-    assert (r.w_L, r.w_M, r.w_R) == (0.3, 0.2, 0.3)
+    assert (r.w_L, r.w_M, r.w_R) == (0.3, 0.1, 0.15)
     assert a.gamma == 0.9
     # base.toml agrees with dataclass defaults
     cfg = load_config(BASE, scn("stable"))
