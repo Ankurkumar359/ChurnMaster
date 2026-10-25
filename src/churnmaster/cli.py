@@ -1,8 +1,7 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-tune, evaluate, reproduce. ``reproduce --figures-only`` is implemented;
-``--quick`` / ``--full`` exit 2 ("not implemented yet") until part B lands.
+tune, evaluate, reproduce (``--quick``, ``--full`` or ``--figures-only``).
 """
 
 from __future__ import annotations
@@ -640,29 +639,70 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--figures-only", action="store_true",
                       help="regenerate figures and tables from existing results (no simulation)")
     p.add_argument("--out", default=None, metavar="DIR",
-                   help="output directory (figures-only default results/figures); canonical "
-                        "results directories are refused")
+                   help="output directory (default results/reproduce_quick, "
+                        "results/reproduce_full or results/figures); canonical results "
+                        "directories are refused")
     p.add_argument("--results-dir", default="results", metavar="DIR",
                    help="input results root for --figures-only (default results)")
     p.add_argument("--configs-dir", default=None, help="override the configs directory")
-    _add_workers_arg(p)
+    p.add_argument("--workers", type=int, default=None, metavar="N",
+                   help="parallel worker processes for --quick / --full (default "
+                        "min(cpu_count - 1, 8); results are identical for any N)")
     p.set_defaults(func=cmd_reproduce)
     return parser
 
 
+def _reproduce_pipeline(args: argparse.Namespace, mode: str) -> int:
+    from churnmaster.experiments.reproduce import run_pipeline
+
+    out = Path(args.out) if args.out else Path(f"results/reproduce_{mode}")
+    t0 = time.perf_counter()
+    try:
+        res = run_pipeline(mode, out, configs_dir=args.configs_dir, workers=args.workers,
+                           progress=lambda m: print(m, flush=True), args=args)
+    except ValueError as e:
+        print(f"churnmaster reproduce: {e}", file=sys.stderr)
+        return 1
+    wall = time.perf_counter() - t0
+    m = res.manifest
+    print(f"reproduce --{mode}: status={m['status']} exit={res.exit_code} wall={wall:.1f}s "
+          f"workers={m['workers']} out={res.out_dir}")
+    for s in m["stages"]:
+        print(f"  {s['name']:<12} {s['status']:<9} {s['wall_s']:>8.1f}s"
+              + (f"  {s['error']}" if "error" in s else ""))
+    hyp = next((s.get("hypotheses") for s in m["stages"] if s["name"] == "evaluate"), None)
+    if hyp:
+        print("  hypotheses: " + ", ".join(f"{k}={v}" for k, v in hyp.items()))
+    v = m.get("verify")
+    if v:
+        print(f"  verify vs {v.get('canonical_root', 'canonical')}: {v['status']}")
+        ps = v.get("per_seed") or {}
+        if ps:
+            print(f"    per_seed.csv sha256_equal={ps['sha256_equal']} keys_equal={ps['keys_equal']} "
+                  f"columns_equal={ps['columns_equal']} differing={ps['differing_columns']}")
+            for c in ps["differing_columns"]:
+                d = ps["max_abs_diff"].get(c, ps["n_text_diff"].get(c))
+                print(f"      {c}: {d}")
+        for rel, sv in (v.get("selections") or {}).items():
+            print(f"    {rel}: {sv['status']}" + (f" {sv['differences']}" if sv.get("differences")
+                                                   else ""))
+    print(f"wrote {res.out_dir / 'reproduce_manifest.json'}")
+    return res.exit_code
+
+
 def cmd_reproduce(args: argparse.Namespace) -> int:
-    """Reproduction (Requirement 26). Exit codes: 0 ok; 1 usage / input errors; 2 not
-    implemented (``--quick`` / ``--full`` until part B)."""
+    """Reproduction (Requirement 26). Exit codes: 0 ok; 1 usage / input errors;
+    3 ``--full`` output differs from the canonical results; 5 a pipeline stage failed."""
     from churnmaster.experiments.reproduce import figures_only
 
     def fail(msg: str, code: int = 1) -> int:
         print(f"churnmaster reproduce: {msg}", file=sys.stderr)
         return code
 
-    if args.workers < 1:
+    if args.workers is not None and args.workers < 1:
         return fail("--workers must be >= 1")
     if args.quick or args.full:
-        return fail(f"--{'quick' if args.quick else 'full'} not implemented yet (part B)", 2)
+        return _reproduce_pipeline(args, "quick" if args.quick else "full")
     out = Path(args.out) if args.out else Path("results/figures")
     try:
         files = figures_only(args.results_dir, out, progress=lambda m: print(m, flush=True))

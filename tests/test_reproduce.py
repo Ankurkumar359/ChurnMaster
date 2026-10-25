@@ -396,3 +396,213 @@ def test_plot_tuning_scatter(tmp_path, results):
     assert _is_png(plots.plot_tuning_scatter(s, tmp_path / "s.png"))
     with pytest.raises(ValueError):
         plots.plot_tuning_scatter(s.iloc[0:0], tmp_path / "x.png")
+
+
+# --------------------------------------------------------------------------- #
+# Part B: quick / full pipelines
+# --------------------------------------------------------------------------- #
+
+from churnmaster.experiments import reproduce as rp  # noqa: E402
+
+
+def _per_seed_table(seed: int = 0) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    rows = [{"policy": p, "scenario": s, "split": "eval", "run": 0, "episode": e,
+             **{k: v[0] for k, v in _metrics(rng, 1).items()}, "trace_hash": f"h{p}{s}{e}"}
+            for p in ("never_replace", "rl_run0") for s in SCNS for e in range(3)]
+    return pd.DataFrame(rows)
+
+
+def test_compare_per_seed_identical_and_perturbed(tmp_path):
+    df = _per_seed_table()
+    a, b = tmp_path / "a.csv", tmp_path / "b.csv"
+    df.to_csv(a, index=False)
+    df.to_csv(b, index=False)
+    same = rp.compare_per_seed(a, b)
+    assert same["ok"] and same["sha256_equal"] and same["differing_columns"] == []
+    assert all(v == 0.0 for v in same["max_abs_diff"].values())
+
+    # Row order does not matter; values do.
+    df.iloc[::-1].to_csv(b, index=False)
+    shuffled = rp.compare_per_seed(a, b)
+    assert shuffled["ok"] and not shuffled["sha256_equal"]
+
+    pert = df.copy()
+    pert.loc[3, "J"] += 1e-9
+    pert.loc[5, "pings_per_hour"] -= 2.5
+    pert.loc[0, "trace_hash"] = "other"
+    pert.to_csv(b, index=False)
+    d = rp.compare_per_seed(a, b)
+    assert not d["ok"] and d["keys_equal"] and d["columns_equal"]
+    assert d["differing_columns"] == ["J", "pings_per_hour", "trace_hash"]
+    assert d["max_abs_diff"]["J"] == pytest.approx(1e-9, rel=1e-3)
+    assert d["max_abs_diff"]["pings_per_hour"] == pytest.approx(2.5)
+    assert d["max_abs_diff"]["success_rate"] == 0.0
+    assert d["n_text_diff"]["trace_hash"] == 1
+
+    df.iloc[1:].to_csv(b, index=False)
+    missing = rp.compare_per_seed(a, b)
+    assert not missing["ok"] and not missing["keys_equal"]
+    assert missing["rows_only_reproduced"] == ["never_replace|stable|eval|0|0"]
+
+
+def test_verify_against_selections(tmp_path):
+    canon, out = tmp_path / "canon", tmp_path / "out"
+    for root in (canon, out):
+        (root / "eval").mkdir(parents=True)
+        (root / "tune").mkdir()
+        _per_seed_table().to_csv(root / "eval" / "per_seed.csv", index=False)
+        (root / "tune" / "selected.json").write_text(json.dumps(
+            {"global": "f=2", "per_scenario": {"stable": "f=2"}, "default_config": "d",
+             "default_rank": 3, "wall_s": 1.0 if root == canon else 9.0}), encoding="utf-8")
+    v = rp.verify_against(out, canon)
+    assert v["status"] == "ok"  # wall_s ignored
+    assert v["selections"]["tune/selected.json"]["status"] == "ok"
+    assert v["selections"]["train/grid/selected.json"]["status"] == "skipped"
+    (out / "tune" / "selected.json").write_text(json.dumps(
+        {"global": "f=1", "per_scenario": {"stable": "f=2"}, "default_config": "d",
+         "default_rank": 3}), encoding="utf-8")
+    v = rp.verify_against(out, canon)
+    assert v["status"] == "mismatch"
+    assert v["selections"]["tune/selected.json"]["differences"] == {
+        "global": {"reproduced": "f=1", "canonical": "f=2"}}
+    assert rp.verify_against(out, tmp_path / "none")["status"] == "skipped"
+
+
+def _noop(p):
+    return {}
+
+
+def test_pipeline_records_failed_stage_and_stops(tmp_path, monkeypatch):
+    calls = []
+
+    def boom(p):
+        calls.append("diagnostics")
+        raise RuntimeError("diagnostics exploded")
+
+    monkeypatch.setattr(rp, "_stage_headroom", lambda p: calls.append("headroom") or {"x": 1})
+    monkeypatch.setattr(rp, "_stage_diagnostics", boom)
+    for name in ("train", "tune", "matched", "evaluate", "figures"):
+        monkeypatch.setattr(rp, f"_stage_{name}", lambda p, n=name: calls.append(n) or {})
+    res = rp.run_pipeline("quick", tmp_path / "o", configs_dir=CONFIGS, workers=1)
+    assert res.exit_code == rp.EXIT_STAGE_FAILED and not res.ok
+    assert calls == ["headroom", "diagnostics"]
+    man = json.loads((tmp_path / "o" / "reproduce_manifest.json").read_text(encoding="utf-8"))
+    assert man["status"] == "failed" and man["exit_code"] == rp.EXIT_STAGE_FAILED
+    assert man["failed_stage"] == "diagnostics"
+    assert man["not_run"] == ["train", "tune", "matched", "evaluate", "figures"]
+    assert [(s["name"], s["status"]) for s in man["stages"]] == [("headroom", "ok"),
+                                                                ("diagnostics", "failed")]
+    assert man["stages"][0]["x"] == 1
+    assert "diagnostics exploded" in man["stages"][1]["error"]
+    assert man["settings"] == rp.QUICK_SETTINGS and "git_hash" in man
+    assert man["stage_plan"] == list(rp.STAGE_NAMES[:-1])  # no verify in quick mode
+
+    # CLI: same failure -> exit 5; the previous reproduce output dir is reused.
+    assert main(["reproduce", "--quick", "--out", str(tmp_path / "o"), "--workers", "1",
+                 "--configs-dir", str(CONFIGS)]) == rp.EXIT_STAGE_FAILED
+
+
+def test_full_pipeline_verify_mismatch_exits_3(tmp_path, monkeypatch):
+    canon = tmp_path / "canon"
+    (canon / "eval").mkdir(parents=True)
+    _per_seed_table().to_csv(canon / "eval" / "per_seed.csv", index=False)
+
+    def fake_eval(p, delta=0.0):
+        df = _per_seed_table()
+        df.loc[0, "J"] += delta
+        (p.out / "eval").mkdir(parents=True)
+        df.to_csv(p.out / "eval" / "per_seed.csv", index=False)
+        return {}
+
+    monkeypatch.setattr(rp, "_stage_evaluate", fake_eval)
+    ok = rp.run_pipeline("full", tmp_path / "o", configs_dir=CONFIGS, workers=1,
+                         stages=["evaluate", "verify"], canonical_root=canon)
+    assert ok.exit_code == 0 and ok.manifest["verify"]["status"] == "ok"
+    monkeypatch.setattr(rp, "_stage_evaluate", lambda p: fake_eval(p, 0.125))
+    bad = rp.run_pipeline("full", tmp_path / "o", configs_dir=CONFIGS, workers=1,
+                          stages=["evaluate", "verify"], canonical_root=canon)
+    assert bad.exit_code == rp.EXIT_VERIFY_MISMATCH
+    assert bad.manifest["status"] == "verify_mismatch"
+    v = bad.manifest["verify"]
+    assert v["per_seed"]["differing_columns"] == ["J"]
+    assert v["per_seed"]["max_abs_diff"]["J"] == pytest.approx(0.125)
+    assert bad.manifest["stages"][-1]["status"] == "mismatch"
+
+
+def test_pipeline_refuses_canonical_and_foreign_out(tmp_path):
+    for out in (REPO / "results" / "train", REPO / "results", REPO):
+        with pytest.raises(ValueError):
+            rp.run_pipeline("quick", out, configs_dir=CONFIGS)
+    foreign = tmp_path / "f"
+    foreign.mkdir()
+    (foreign / "keep.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError, match="not empty"):
+        rp.run_pipeline("quick", foreign, configs_dir=CONFIGS)
+    assert (foreign / "keep.txt").is_file()
+    with pytest.raises(ValueError, match="unknown settings"):
+        rp.run_pipeline("quick", tmp_path / "g", settings_overrides={"nope": 1})
+    with pytest.raises(ValueError, match="mode"):
+        rp.run_pipeline("medium", tmp_path / "g")
+
+
+def test_toml_dumps_round_trips_experiment_overrides(tmp_path):
+    import tomllib
+
+    from churnmaster.config import load_config, merge, read_toml
+
+    data = merge(read_toml(CONFIGS / "experiments" / "train.toml"),
+                 {"sim": {"warmup_s": 60, "measured_s": 240, "p_loss": 0.02}})
+    assert tomllib.loads(rp.toml_dumps(data)) == data
+    paths = rp._experiment_paths(CONFIGS, tmp_path, {"sim": {"warmup_s": 60, "measured_s": 240}})
+    assert set(paths) == {"headroom", "diagnostics", "train", "tune", "matched", "evaluate"}
+    for p in paths.values():
+        cfg = load_config(CONFIGS / "base.toml", CONFIGS / "scenarios" / "stable.toml", p)
+        assert (cfg.sim.warmup_s, cfg.sim.measured_s) == (60, 240)
+    cfg = load_config(CONFIGS / "base.toml", CONFIGS / "scenarios" / "stable.toml",
+                      paths["evaluate"])
+    assert cfg.experiment.name == "eval"
+    assert rp._experiment_paths(CONFIGS, tmp_path / "x", None)["diagnostics"] is None
+
+
+def _canonical_hashes() -> dict[str, str]:
+    out = {}
+    for d in (*(REPO / c for c in CANONICAL_DIRS), REPO / "results" / "figures"):
+        if d.is_dir():
+            out.update({f"{d.name}/{k}": v for k, v in _tree_hashes(d).items()})
+    return out
+
+
+@pytest.mark.slow
+def test_quick_pipeline_end_to_end_short_episodes(tmp_path):
+    from churnmaster.experiments.runner import default_workers
+
+    before = _canonical_hashes()
+    out = tmp_path / "quick"
+    res = rp.run_pipeline(
+        "quick", out, configs_dir=CONFIGS, workers=default_workers(),
+        experiment_overrides={"sim": {"warmup_s": 60, "measured_s": 240}},
+        settings_overrides={"headroom_seeds": 5, "diag_episodes": 3, "train_episodes": 6,
+                            "train_validate_every": 3, "train_validation_seeds": 1,
+                            "tune_seeds": 1, "matched_seeds": 1, "eval_seeds": 3})
+    man = json.loads((out / "reproduce_manifest.json").read_text(encoding="utf-8"))
+    assert res.exit_code == 0, man.get("stages")
+    assert man["status"] == "ok" and man["mode"] == "quick"
+    assert "git_hash" in man and man["packages"]["numpy"]
+    assert set(man["config_hashes"]) >= {"stable", "high_churn", "heldout_medium"}
+    assert [s["name"] for s in man["stages"]] == list(rp.STAGE_NAMES[:-1])
+    assert all(s["status"] == "ok" and s["wall_s"] >= 0 for s in man["stages"])
+    # Stages used OUT's own frozen manifest (with its own eval lock).
+    frozen = json.loads((out / "headroom" / "manifest.json").read_text(encoding="utf-8"))
+    assert frozen["frozen"] and frozen["eval_lock"]["episodes"] == [0, 1, 2]
+    assert len(frozen["eval_runs"]) == 1
+    # Tables and figures.
+    per = pd.read_csv(out / "eval" / "per_seed.csv")
+    assert set(per["episode"]) == {0, 1, 2} and "rl_run0" in set(per["policy"])
+    hyp = pd.read_csv(out / "eval" / "hypotheses.csv")
+    assert list(hyp["id"]) == ["H1", "H2", "H3", "H4", "H5"]
+    for name in ("validation_curves.png", "training_curves.png", "eval_comparison.png",
+                 "headroom_J_p95.png", "tuning_scatter.png"):
+        assert _is_png(out / "figures" / name), name
+    assert (out / "figures" / "tables" / "hypotheses.md").is_file()
+    assert _canonical_hashes() == before

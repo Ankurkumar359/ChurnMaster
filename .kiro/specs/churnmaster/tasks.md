@@ -278,7 +278,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - **Validates: Requirements 25.5**
 
 - [ ] 10. Report and reproducibility (MVP complete)
-  - [ ] 10.1 Implement `experiments/reproduce.py` and `reproduce` command
+  - [x] 10.1 Implement `experiments/reproduce.py` and `reproduce` command
     - `--quick` (1 run, 40 episodes, 5 eval seeds, <10 min) and `--full` (headroom → diagnostics → train → tune → evaluate → stats → plots); manifest with git hash, config hashes, package versions; learning-curve and comparison figures in `plots.py`
     - `tests/test_reproduce.py` (`slow`): quick mode writes manifest, tables, and figures
     - _Requirements: 26.2, 26.3, 26.4_

@@ -67,9 +67,19 @@ def test_reproduce_requires_exactly_one_mode():
 
 
 @pytest.mark.parametrize("flag", ["--quick", "--full"])
-def test_reproduce_pipelines_not_implemented_yet(flag, capsys):
-    assert main(["reproduce", flag]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
+def test_reproduce_pipeline_args(flag):
+    a = build_parser().parse_args(["reproduce", flag, "--out", "x", "--workers", "3"])
+    assert (a.quick, a.full) == (flag == "--quick", flag == "--full")
+    assert a.out == "x" and a.workers == 3
+    assert build_parser().parse_args(["reproduce", flag]).workers is None  # default_workers()
+
+
+@pytest.mark.parametrize("flag", ["--quick", "--full"])
+@pytest.mark.parametrize("out", ["results/headroom", "results/eval/sub", "results", "."])
+def test_reproduce_pipelines_refuse_canonical_out(flag, out, capsys):
+    assert main(["reproduce", flag, "--out", out]) == 1
+    err = capsys.readouterr().err
+    assert "canonical" in err or "results root" in err
 
 
 def test_simulate_prints_metrics_and_hashes(capsys):
