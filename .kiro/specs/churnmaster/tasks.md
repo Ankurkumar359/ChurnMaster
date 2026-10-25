@@ -257,19 +257,19 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
   - [x] 8.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Heuristic tuning, matched random, evaluation, statistics
-  - [ ] 9.1 Implement `experiments/tune_heuristic.py`
+  - [x] 9.1 Implement `experiments/tune_heuristic.py`
     - All 32 configs on 10 train seeds per scenario; global best (stable + high_churn) by mean J; per-scenario best labeled privileged; `configs/experiments/tune.toml`
     - `tests/test_tune_heuristic.py`: selection logic on synthetic results
     - _Requirements: 25.1_
-  - [ ] 9.2 Add matched_random frequency extraction
+  - [x] 9.2 Add matched_random frequency extraction
     - In `policies/baselines.py`: build per-scenario frequencies split by candidate presence from RL decisions on validation seeds
     - Extend `tests/test_baselines.py`: frequencies from scripted decisions; sampled actions respect masking
     - _Requirements: 17.2_
-  - [ ] 9.3 Implement `experiments/evaluate.py` with eval lock and `evaluate` command
+  - [-] 9.3 Implement `experiments/evaluate.py` with eval lock and `evaluate` command
     - 20 eval seeds × {stable, high_churn, heldout_medium} × all policies × 3 RL runs; eval split lock in manifest; SplitLockError on missing or mismatched lock; per-seed and per-run CSVs; `configs/experiments/eval.toml`
     - `tests/test_evaluate.py`: lock enforcement, eval seeds disjoint from calibration/train/validation
     - _Requirements: 25.2, 25.3, 25.6, 2.3_
-  - [ ] 9.4 Extend `experiments/stats.py`
+  - [x] 9.4 Extend `experiments/stats.py`
     - Wilcoxon signed-rank, Holm over the 9 primary tests (RL vs kademlia_epoch, tuned heuristic, matched_random × 3 scenarios on J), RL averaged over runs, per-run results, automatic H1–H5 table (CSV + Markdown)
     - Extend `tests/test_stats.py`: Wilcoxon/Holm on synthetic data, H-table generation
     - _Requirements: 25.4, 25.5, 25.6_

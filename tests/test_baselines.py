@@ -10,13 +10,13 @@ import pytest
 from churnmaster.actions import Action
 from churnmaster.policies.base import Policy, allowed, has_candidate
 from churnmaster.policies.baselines import (
-    BASELINE_NAMES, AlwaysReplace, KademliaEpoch, KademliaStd, MatchedRandom,
-    NeverReplace, UniformRandom, make_baseline,
+    BASELINE_NAMES, FALLBACK_FREQS, AlwaysReplace, KademliaEpoch, KademliaStd, MatchedRandom,
+    NeverReplace, UniformRandom, action_counts, action_frequencies, make_baseline,
 )
 from churnmaster.policies.oracle import OracleFacts, OracleHeuristic
 from churnmaster.rl.state import allowed_actions, discretize, encode
 from churnmaster.seeding import baseline_rng
-from churnmaster.sim.observation import DecisionContext
+from churnmaster.sim.observation import DecisionContext, DecisionRecord
 
 FREQS = {False: [0.7, 0.3, 0.0], True: [0.2, 0.3, 0.5]}
 
@@ -129,6 +129,64 @@ def test_matched_random_reproduces_frequencies():
 def test_matched_random_validation(bad):
     with pytest.raises(ValueError):
         MatchedRandom(bad, np.random.default_rng(0))
+
+
+# --------------------------------------------------------------------------- #
+# Frequency extraction (task 9.2)
+# --------------------------------------------------------------------------- #
+
+S_NO = encode(discretize(WITHOUT))
+S_CAND = encode(discretize(WITH))
+
+
+def rec(state, action, pings=0):
+    return DecisionRecord(bucket=7, epoch_idx=0, t_ms=0, state=state, action=action,
+                          pings=pings, evictions=0, measured=True)
+
+
+def scripted():
+    out = ([rec(S_NO, Action.KEEP)] * 6 + [rec(S_NO, Action.PROBE)] * 2
+           + [rec(S_CAND, Action.KEEP)] * 1 + [rec(S_CAND, Action.PROBE)] * 3
+           + [rec(S_CAND, Action.REPLACE)] * 6)
+    # null records (empty bucket) and kademlia_std ping-cost records are skipped
+    out += [rec(None, None)] * 5 + [rec(None, None, pings=1)] * 4
+    return out
+
+
+def test_action_counts_and_frequencies_from_scripted_decisions():
+    assert action_counts(scripted()) == {False: (6, 2, 0), True: (1, 3, 6)}
+    f = action_frequencies(scripted())
+    assert f[False] == pytest.approx((0.75, 0.25, 0.0), abs=1e-15)
+    assert f[True] == pytest.approx((0.1, 0.3, 0.6), abs=1e-15)
+    assert f[False][2] == 0.0
+    assert abs(sum(f[True]) - 1.0) <= 1e-15
+    assert action_frequencies(action_counts(scripted())) == f   # counts mapping accepted
+
+
+def test_action_frequencies_empty_group_fallback():
+    only_no = [rec(S_NO, Action.PROBE)] * 3
+    f = action_frequencies(only_no)
+    assert f[False] == (0.0, 1.0, 0.0)
+    assert f[True] == FALLBACK_FREQS[True]
+    assert action_frequencies([]) == FALLBACK_FREQS
+    MatchedRandom(action_frequencies([]), np.random.default_rng(0))
+
+
+def test_action_counts_rejects_replace_without_candidate():
+    with pytest.raises(ValueError):
+        action_counts([rec(S_NO, Action.REPLACE)])
+
+
+def test_extracted_frequencies_drive_matched_random():
+    f = action_frequencies(scripted())
+    p = MatchedRandom(f, np.random.default_rng(3))
+    n = 10_000
+    no = Counter(p.decide(WITHOUT) for _ in range(n))
+    assert Action.REPLACE not in no
+    yes = Counter(p.decide(WITH) for _ in range(n))
+    for c, key in ((no, False), (yes, True)):
+        for a in Action:
+            assert abs(c.get(a, 0) / n - f[key][int(a)]) < 0.02
 
 
 def test_random_policies_use_only_injected_rng():

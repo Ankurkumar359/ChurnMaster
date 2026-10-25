@@ -1,9 +1,9 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-evaluate, reproduce. ``show-config``, ``simulate``, ``compare``, ``headroom``,
-``diagnostics`` and ``train`` are implemented; the others are stubs that exit
-non-zero until their tasks land.
+tune, evaluate, reproduce. ``show-config``, ``simulate``, ``compare``,
+``headroom``, ``diagnostics``, ``train`` and ``tune`` are implemented; the
+others are stubs that exit non-zero until their tasks land.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from churnmaster.config import ConfigError, config_hash, load_config, to_dict
 
-COMMANDS = ("show-config", "simulate", "compare", "headroom", "diagnostics", "train",
+COMMANDS = ("show-config", "simulate", "compare", "headroom", "diagnostics", "train", "tune",
             "evaluate", "reproduce")
 
 
@@ -393,6 +393,55 @@ def cmd_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tune(args: argparse.Namespace) -> int:
+    """Tune the heuristic family (Requirement 25.1).
+
+    Exit codes: 0 on success; 1 on usage errors or a frozen-env mismatch.
+    """
+    from churnmaster.experiments.runner import FrozenEnvError
+    from churnmaster.experiments.tune_heuristic import run_tuning, write_outputs
+
+    def fail(msg: str) -> int:
+        print(f"churnmaster tune: {msg}", file=sys.stderr)
+        return 1
+
+    if (args.seeds is not None and args.seeds < 1) or args.workers < 1:
+        return fail("--seeds and --workers must be >= 1")
+    root = _configs_root(args)
+    exp = _experiment_path(args) or root / "experiments" / "tune.toml"
+    try:
+        rep = run_tuning(root, Path(args.manifest), experiment_path=exp, n_seeds=args.seeds,
+                         workers=args.workers, progress=lambda m: print(m, flush=True))
+    except (FrozenEnvError, ValueError) as e:
+        return fail(str(e))
+    files = write_outputs(rep, Path(args.out))
+
+    sel = rep.selection
+    scns = sel.scenarios
+    print(f"tune: split={rep.seeds['split']} run={rep.seeds['run']} seeds={rep.seeds['n_seeds']} "
+          f"jobs={rep.n_jobs} wall={rep.wall_s:.1f}s")
+    headers = ["rank", "config", "J_overall", *(f"J {s}" for s in scns), "success",
+               "p95_all_ms", "pings/h"]
+    rows = []
+    for _, r in rep.summary.head(args.top).iterrows():
+        rows.append([str(r["rank"]), r["config"] + (" (default)" if r["is_default"] else ""),
+                     f"{r['J_overall']:.4f}",
+                     *(_fmt_pm(r[f"J_mean_{s}"], r[f"J_std_{s}"]) for s in scns),
+                     f"{r['success_rate_overall']:.4f}", f"{r['p95_latency_all_ms_overall']:.1f}",
+                     f"{r['pings_per_hour_overall']:.1f}"])
+    widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+    print("  ".join(h.ljust(w) for h, w in zip(headers, widths)))
+    for r in rows:
+        print("  ".join(c.ljust(w) for c, w in zip(r, widths)))
+    d = rep.selected_json()
+    print(f"global best (tuned_heuristic): {sel.global_id}")
+    for s, c in sel.per_scenario.items():
+        print(f"privileged best {s}: {c}")
+    print(f"default {d['default_config']} rank: {d['default_rank']}")
+    print(f"wrote {', '.join(str(f) for f in files)}")
+    return 0
+
+
 def _stub(name: str):
     def run(args: argparse.Namespace) -> int:
         print(f"churnmaster {name}: not implemented yet", file=sys.stderr)
@@ -492,6 +541,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="print a training progress line every N episodes (default off)")
     _add_workers_arg(p)
     p.set_defaults(func=cmd_train)
+
+    p = sub.add_parser("tune", help="tune the 32 heuristic configs on train seeds")
+    _add_config_args(p, scenario=False)
+    p.add_argument("--seeds", type=int, default=None,
+                   help="train episodes per config and scenario (default: tune.toml n_seeds, 10)")
+    p.add_argument("--manifest", default="results/headroom/manifest.json",
+                   help="frozen env manifest (default results/headroom/manifest.json)")
+    p.add_argument("--out", default="results/tune", metavar="DIR",
+                   help="output directory (default results/tune)")
+    p.add_argument("--top", type=int, default=5, help="configs to print (default 5)")
+    _add_workers_arg(p)
+    p.set_defaults(func=cmd_tune)
 
     helps = {
         "evaluate": "evaluate policies on test seeds",
