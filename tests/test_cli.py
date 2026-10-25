@@ -51,15 +51,24 @@ def test_show_config_unknown_scenario_is_clean_error(capsys):
 def test_all_nine_commands_registered():
     parser = build_parser()
     for name in COMMANDS:
-        assert parser.parse_args([name]).command == name
+        argv = [name, "--figures-only"] if name == "reproduce" else [name]
+        assert parser.parse_args(argv).command == name
     assert len(COMMANDS) == 9
 
 
-@pytest.mark.parametrize("name", [c for c in COMMANDS
-                                  if c not in ("show-config", "simulate", "compare", "headroom",
-                                               "diagnostics", "train", "tune", "evaluate")])
-def test_stub_commands_exit_nonzero(name, capsys):
-    assert main([name]) != 0
+def test_reproduce_requires_exactly_one_mode():
+    parser = build_parser()
+    for flag in ("--quick", "--full", "--figures-only"):
+        assert parser.parse_args(["reproduce", flag]).command == "reproduce"
+    for argv in (["reproduce"], ["reproduce", "--quick", "--full"],
+                 ["reproduce", "--full", "--figures-only"]):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+
+
+@pytest.mark.parametrize("flag", ["--quick", "--full"])
+def test_reproduce_pipelines_not_implemented_yet(flag, capsys):
+    assert main(["reproduce", flag]) == 2
     assert "not implemented yet" in capsys.readouterr().err
 
 

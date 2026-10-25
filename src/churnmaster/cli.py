@@ -1,8 +1,8 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-tune, evaluate, reproduce. All but ``reproduce`` are implemented; it is a
-stub that exits non-zero until its task lands.
+tune, evaluate, reproduce. ``reproduce --figures-only`` is implemented;
+``--quick`` / ``--full`` exit 2 ("not implemented yet") until part B lands.
 """
 
 from __future__ import annotations
@@ -503,13 +503,6 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _stub(name: str):
-    def run(args: argparse.Namespace) -> int:
-        print(f"churnmaster {name}: not implemented yet", file=sys.stderr)
-        return 2
-    return run
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="churnmaster", description="ChurnMaster DHT maintenance study")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -637,18 +630,50 @@ def build_parser() -> argparse.ArgumentParser:
     _add_workers_arg(p)
     p.set_defaults(func=cmd_evaluate)
 
-    helps = {
-        "reproduce": "regenerate all tables and figures",
-    }
-    for name, text in helps.items():
-        p = sub.add_parser(name, help=f"{text} (not implemented yet)")
-        _add_config_args(p)
-        if name == "reproduce":
-            mode = p.add_mutually_exclusive_group()
-            mode.add_argument("--quick", action="store_true")
-            mode.add_argument("--full", action="store_true")
-        p.set_defaults(func=_stub(name))
+    p = sub.add_parser("reproduce", help="regenerate tables and figures (--quick, --full or "
+                                         "--figures-only)")
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--quick", action="store_true",
+                      help="1 run x 40 episodes, 5 eval seeds (< 10 min)")
+    mode.add_argument("--full", action="store_true",
+                      help="headroom -> diagnostics -> train -> tune -> evaluate -> stats -> plots")
+    mode.add_argument("--figures-only", action="store_true",
+                      help="regenerate figures and tables from existing results (no simulation)")
+    p.add_argument("--out", default=None, metavar="DIR",
+                   help="output directory (figures-only default results/figures); canonical "
+                        "results directories are refused")
+    p.add_argument("--results-dir", default="results", metavar="DIR",
+                   help="input results root for --figures-only (default results)")
+    p.add_argument("--configs-dir", default=None, help="override the configs directory")
+    _add_workers_arg(p)
+    p.set_defaults(func=cmd_reproduce)
     return parser
+
+
+def cmd_reproduce(args: argparse.Namespace) -> int:
+    """Reproduction (Requirement 26). Exit codes: 0 ok; 1 usage / input errors; 2 not
+    implemented (``--quick`` / ``--full`` until part B)."""
+    from churnmaster.experiments.reproduce import figures_only
+
+    def fail(msg: str, code: int = 1) -> int:
+        print(f"churnmaster reproduce: {msg}", file=sys.stderr)
+        return code
+
+    if args.workers < 1:
+        return fail("--workers must be >= 1")
+    if args.quick or args.full:
+        return fail(f"--{'quick' if args.quick else 'full'} not implemented yet (part B)", 2)
+    out = Path(args.out) if args.out else Path("results/figures")
+    try:
+        files = figures_only(args.results_dir, out, progress=lambda m: print(m, flush=True))
+    except (ValueError, FileNotFoundError) as e:
+        return fail(str(e))
+    man = json.loads(files[-1].read_text(encoding="utf-8"))
+    print(f"reproduce --figures-only: wrote {len(files) - 1} files + manifest to {out}; "
+          f"skipped {len(man['skipped'])}")
+    for s in man["skipped"]:
+        print(f"  skipped {s['kind']} {s['output']}: {s['reason']}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
