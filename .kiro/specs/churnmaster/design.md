@@ -646,9 +646,11 @@ Not an upper bound; no ordering vs other policies is assumed.
 
 ### Headroom gate and env freeze (Task 6)
 10 calibration seeds × {stable, high_churn}.
-- G1: best of {kademlia_epoch, always_replace, oracle_heuristic} beats never_replace by ≥5 pp success in high_churn, with paired bootstrap CI excluding 0.
-- G2: oracle_heuristic ≥1.5 pp success over kademlia_epoch, OR uses ≤60% of its pings within 0.5 pp success. If G2 fails, proceed and report limited headroom.
-- If G1 fails, tune deadline {1000, 1500, 2000} ms, loss {1, 2, 5}%, replicas {1, 2, 3} on calibration seeds only. Then freeze the env config hash in the manifest.
+(revised: gates on J/p95 per user decision after checkpoint 5.17 — never_replace already reached ~99% success in high_churn, so success-pp gates could not discriminate; J and p95 latency do.)
+- G1: in high_churn, "best" = the policy among {kademlia_epoch, always_replace, oracle_heuristic} with the largest mean paired ΔJ vs never_replace (all three are reported). G1 passes if best has ΔJ ≥ `g1_min_dJ` (0.01) with paired bootstrap CI (10k resamples, 95%) lo > 0, OR mean per-seed relative p95_latency_all_ms reduction (nr − p)/nr ≥ `g1_min_p95_rel` (0.20) with the paired CI on the ms difference (nr − p) having lo > 0.
+- G2: oracle_heuristic vs kademlia_epoch in high_churn: ΔJ ≥ `g2_min_dJ` (0.01) with CI lo > 0, OR pings ratio (mean oracle pings / mean kademlia pings) ≤ `g2_max_ping_ratio` (0.6) with mean ΔJ ≥ −`g2_J_tol` (0.005). If G2 fails, proceed and report limited headroom.
+- If G1 fails, tune deadline {1000, 1500, 2000} ms, loss {1, 2, 5}%, replicas {1, 2, 3} on high_churn calibration seeds only; settings are tried in order of distance from the default (number of changed parameters, then |Δ| in grid steps) and the first passing setting is reported as overrides in gates.json/manifest (base configs are not edited). Exit code 3 if no setting passes.
+- Freeze: `manifest.json` records `env_hashes` {scenario: sha256 over the `sim` + `scenario` sections} for every scenario in `configs/scenarios/` (including heldout_medium and bursty), plus git hash and package versions. `check_frozen` raises `FrozenEnvError` when a run's env hash differs; reward/agent/experiment changes do not alter the env hash.
 
 ### Reward diagnostics (Task 7)
 - Reward-total identity holds exactly.

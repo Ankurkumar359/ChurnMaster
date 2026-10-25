@@ -49,6 +49,7 @@ from churnmaster.policies.base import Policy
 from churnmaster.policies.baselines import BASELINE_NAMES, RANDOM_BASELINES, make_baseline
 from churnmaster.policies.heuristic import DEFAULT_CONFIG, Heuristic, HeuristicConfig
 from churnmaster.policies.oracle import OracleFacts, OracleHeuristic
+from churnmaster.rl.ledger import Ledger, Transition
 from churnmaster.rl.state import discretize, encode
 from churnmaster.seeding import BASELINE_EPISODE_OFFSET, Split, baseline_rng, env_seed, \
     episode_seed, make_streams
@@ -198,9 +199,13 @@ class EpisodeResult:
     metrics: EpisodeMetrics
     trace: EpisodeTrace
     config_hash: str
+    ledger_score: float = math.nan                 # Ledger.score() (== metrics.J, Req. 15.5)
+    n_transitions: int = 0                         # τ=1 transitions emitted by the Ledger
     lookups: list[ObservedLookup] | None = None    # only with keep_records
     decisions: list[DecisionRecord] | None = None
     gts: list[GTRecord] | None = None
+    transitions: list[Transition] | None = None
+    ledger: Ledger | None = None                   # only with keep_records (per-(b,k) rewards)
 
     def row(self) -> dict[str, Any]:
         """Flat scalar row for :func:`results_table`."""
@@ -211,6 +216,7 @@ class EpisodeResult:
             **self.metrics.to_dict(diagnostics=False),
             "trace_hash": self.trace.trace_hash, "workload_hash": self.trace.workload_hash,
             "summary_hash": summary_hash(self.metrics), "config_hash": self.config_hash,
+            "ledger_score": self.ledger_score, "n_transitions": self.n_transitions,
         }
 
 
@@ -229,11 +235,18 @@ def _job_config(job: Job, cfg: Config | None, cfg_loader: Callable[[str], Config
 
 def run_job(job: Job, configs_dir: Path | None = None, *,
             cfg_loader: Callable[[str], Config] | None = None, cfg: Config | None = None,
-            keep_records: bool = False) -> EpisodeResult:
+            keep_records: bool = False,
+            on_transition: Callable[[Transition], None] | None = None) -> EpisodeResult:
     """Run one job: build config, env and policy, run the episode, summarize.
 
     The config comes from ``cfg`` (explicit override, must match the job's
     scenario), else ``cfg_loader(job.scenario)``, else ``configs_dir``.
+
+    Every observable record (lookups and decision/cost records, never GT
+    records) is fed to a :class:`~churnmaster.rl.ledger.Ledger` in env order;
+    ``on_transition`` (if given) receives each τ=1 transition as soon as the
+    ledger emits it. After summarizing, ``metrics.J == ledger.score()`` is
+    checked (Requirement 15.5); a mismatch raises ``RuntimeError``.
     """
     cfg = _job_config(job, cfg, cfg_loader, configs_dir)
     mode = policy_env_mode(job.policy)
@@ -256,17 +269,55 @@ def run_job(job: Job, configs_dir: Path | None = None, *,
     lookups: list[ObservedLookup] = []
     decisions: list[DecisionRecord] = []
     gts: list[GTRecord] = []
-    trace = env.run(policy.decide if maintenance else None, decisions.append, lookups.append,
+    ledger = Ledger.from_config(cfg)
+    n_tr = 0
+
+    def feed(rec: ObservedLookup | DecisionRecord) -> None:
+        nonlocal n_tr
+        closed = ledger.add(rec)
+        n_tr += len(closed)
+        if on_transition is not None:
+            for tr in closed:
+                on_transition(tr)
+
+    def on_decision(rec: DecisionRecord) -> None:
+        decisions.append(rec)
+        feed(rec)
+
+    def on_lookup(rec: ObservedLookup) -> None:
+        lookups.append(rec)
+        feed(rec)
+
+    trace = env.run(policy.decide if maintenance else None, on_decision, on_lookup,
                     gt_annex=gts.append,
                     encode_state=(lambda ctx: encode(discretize(ctx, id_bits))) if maintenance else None)
+    ledger.finish()
     metrics = summarize(lookups, decisions, gts, cfg)
+    score = ledger.score()
+    _check_identity(metrics.J, score, job)
     return EpisodeResult(
         policy=job.policy_name, scenario=job.scenario, split=Split(job.split), run=job.run,
         episode=job.episode, shares_decision_points=bool(policy.shares_decision_points),
         metrics=metrics, trace=trace, config_hash=config_hash(cfg),
+        ledger_score=score, n_transitions=n_tr,
         lookups=lookups if keep_records else None,
         decisions=decisions if keep_records else None,
-        gts=gts if keep_records else None)
+        gts=gts if keep_records else None,
+        transitions=list(ledger.transitions) if keep_records else None,
+        ledger=ledger if keep_records else None)
+
+
+_IDENTITY_TOL = 1e-9
+
+
+def _check_identity(J: float, score: float, job: Job) -> None:
+    """Requirement 15.5: ``Metrics.J == Ledger.score()`` (both NaN allowed)."""
+    if math.isnan(J) and math.isnan(score):
+        return
+    if math.isnan(J) or math.isnan(score) or abs(J - score) > _IDENTITY_TOL:
+        raise RuntimeError(
+            f"J identity violated for {job.policy_name}/{job.scenario}/{Split(job.split).name.lower()}"
+            f"/run={job.run}/ep={job.episode}: metrics.J={J!r} != ledger.score()={score!r}")
 
 
 def run_jobs(jobs: Iterable[Job], configs_dir: Path | None = None, *,
@@ -339,3 +390,131 @@ def summary_by_policy(df: pd.DataFrame,
             row[f"{m}_std"] = float(vals.std(ddof=1)) if len(vals) > 1 else math.nan
         out.append(row)
     return pd.DataFrame(out)
+
+
+# --------------------------------------------------------------------------- #
+# Manifest and env freeze (Requirements 22.6, 22.7)
+# --------------------------------------------------------------------------- #
+#
+# The *env hash* identifies everything that defines the environment a policy
+# is evaluated in: the ``sim`` and ``scenario`` sections plus ``root_seed``
+# (every churn trace, workload and keyed draw derives from it). Reward,
+# agent and experiment sections are excluded, so tuning the reward or the
+# learner never invalidates the freeze. ``freeze_env`` records one env hash
+# per scenario -- the headroom command freezes every scenario found in
+# ``configs/scenarios`` (including heldout_medium and bursty), so later train
+# / eval runs on any scenario are checked. ``check_frozen`` refuses
+# (``FrozenEnvError``) a config whose scenario is unknown to the manifest or
+# whose env hash differs, and refuses when no manifest exists.
+
+import dataclasses as _dataclasses
+import datetime as _datetime
+import hashlib as _hashlib
+import json as _json
+import subprocess as _subprocess
+
+MANIFEST_NAME = "manifest.json"
+_MANIFEST_PACKAGES = ("numpy", "pandas", "matplotlib", "churnmaster")
+
+__all__ += ["FrozenEnvError", "MANIFEST_NAME", "env_config_hash", "write_manifest",
+            "read_manifest", "git_hash", "package_versions", "freeze_env", "check_frozen"]
+
+
+class FrozenEnvError(RuntimeError):
+    """A run's env config does not match the frozen env hash (or nothing is frozen)."""
+
+
+def env_config_hash(cfg: Config) -> str:
+    """SHA-256 over the env-defining part of ``cfg`` (``sim``, ``scenario``, ``root_seed``)."""
+    payload = {"sim": _dataclasses.asdict(cfg.sim),
+               "scenario": _dataclasses.asdict(cfg.scenario),
+               "root_seed": int(cfg.root_seed)}
+    text = _json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                       allow_nan=False)
+    return _hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def write_manifest(path: Path | str, data: Mapping[str, Any]) -> Path:
+    """Write ``data`` as pretty, key-sorted JSON (parent dirs created)."""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_json.dumps(dict(data), indent=2, sort_keys=True, default=str) + "\n",
+                   encoding="utf-8")
+    return out
+
+
+def read_manifest(path: Path | str) -> dict[str, Any]:
+    return _json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def git_hash(cwd: Path | str | None = None) -> str | None:
+    """``git rev-parse HEAD`` or None when git / the repository is unavailable."""
+    try:
+        proc = _subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True,
+                               timeout=10, cwd=None if cwd is None else str(cwd))
+    except (OSError, _subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def package_versions(names: Sequence[str] = _MANIFEST_PACKAGES) -> dict[str, str | None]:
+    import sys
+    from importlib import metadata
+
+    out: dict[str, str | None] = {"python": sys.version.split()[0]}
+    for n in names:
+        try:
+            out[n] = metadata.version(n)
+        except metadata.PackageNotFoundError:
+            out[n] = None
+    return out
+
+
+def freeze_env(manifest_path: Path | str, cfgs_by_scenario: Mapping[str, Config],
+               extra: Mapping[str, Any] | None = None, frozen: bool = True) -> dict[str, Any]:
+    """Record ``{scenario: env_hash}`` (+ git hash, package versions) in the manifest.
+
+    The manifest is rewritten; ``extra`` entries (seeds, gate verdicts, tuned
+    overrides, ...) are stored alongside. ``frozen=False`` records the hashes
+    but marks the env as NOT frozen (e.g. G1 failed even after tuning);
+    ``check_frozen`` then refuses every run. Returns the written dict.
+    """
+    if not cfgs_by_scenario:
+        raise ValueError("freeze_env needs at least one scenario config")
+    for scn, cfg in cfgs_by_scenario.items():
+        if cfg.scenario.name != scn:
+            raise ValueError(f"config for {scn!r} has scenario name {cfg.scenario.name!r}")
+    data: dict[str, Any] = dict(extra or {})
+    data.update({
+        "frozen": bool(frozen),
+        "env_hashes": {s: env_config_hash(c) for s, c in sorted(cfgs_by_scenario.items())},
+        "config_hashes": {s: config_hash(c) for s, c in sorted(cfgs_by_scenario.items())},
+        "git_hash": git_hash(),
+        "packages": package_versions(),
+        "frozen_at_utc": _datetime.datetime.now(_datetime.timezone.utc).isoformat(timespec="seconds"),
+    })
+    write_manifest(manifest_path, data)
+    return data
+
+
+def check_frozen(manifest_path: Path | str, cfg: Config) -> str:
+    """Return the env hash of ``cfg`` if it matches the frozen one; else raise ``FrozenEnvError``."""
+    path = Path(manifest_path)
+    if not path.is_file():
+        raise FrozenEnvError(f"no frozen env manifest at {path}; run `churnmaster headroom` first")
+    manifest = read_manifest(path)
+    if manifest.get("frozen") is not True:
+        raise FrozenEnvError(f"manifest {path} does not hold a frozen env "
+                             f"(headroom gate G1 did not pass)")
+    hashes = manifest.get("env_hashes") or {}
+    scn = cfg.scenario.name
+    if scn not in hashes:
+        raise FrozenEnvError(f"scenario {scn!r} is not in the frozen manifest {path} "
+                             f"(frozen: {sorted(hashes)})")
+    got = env_config_hash(cfg)
+    if got != hashes[scn]:
+        raise FrozenEnvError(f"env hash for scenario {scn!r} differs from the frozen one "
+                             f"({got[:12]} != {hashes[scn][:12]}); refusing to run")
+    return got

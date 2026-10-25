@@ -28,6 +28,13 @@ def test_lookup_loss_range(w_L, deadline):
             assert 0.0 <= lookup_loss(s, lat, w_L, deadline) <= 1.0 + w_L
 
 
+def test_lookup_loss_extremes():
+    w_L = 0.3
+    assert lookup_loss(True, 0.0, w_L) == 0.0                         # minimum
+    assert lookup_loss(False, float("inf"), w_L) == 1.0 + w_L         # maximum
+    assert lookup_loss(False, 1e12, w_L) == 1.0 + w_L
+
+
 def test_lookup_loss_default_deadline():
     assert lookup_loss(True, 1000.0, 0.3) == pytest.approx(0.15)
 

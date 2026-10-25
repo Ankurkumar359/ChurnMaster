@@ -4,13 +4,26 @@ name = "headroom"
 split = "calibration"
 n_seeds = 10
 scenarios = ["stable", "high_churn"]
-policies = ["never_replace", "kademlia_epoch", "always_replace", "oracle_heuristic"]
+# First four are gate policies; heuristic and kademlia_std are informational rows only.
+policies = ["never_replace", "kademlia_epoch", "always_replace", "oracle_heuristic",
+            "heuristic", "kademlia_std"]
 
+# Gates on J / p95 latency (revised: gates on J/p95 per user decision after checkpoint 5.17).
+# G1 (high_churn): best of kademlia_epoch/always_replace/oracle_heuristic (largest mean ΔJ)
+#   beats never_replace by ΔJ >= g1_min_dJ (CI lo > 0) OR mean relative p95_all reduction
+#   >= g1_min_p95_rel (CI lo > 0 on the paired ms difference never_replace − policy).
+# G2 (high_churn): oracle_heuristic − kademlia_epoch ΔJ >= g2_min_dJ (CI lo > 0), OR
+#   pings ratio <= g2_max_ping_ratio with mean ΔJ >= −g2_J_tol.
 [experiment.gates]
-g1_min_success_pp = 5.0
-g2_min_success_pp = 1.5
+g1_min_dJ = 0.01
+g1_min_p95_rel = 0.20
+g2_min_dJ = 0.01
 g2_max_ping_ratio = 0.6
-g2_success_tol_pp = 0.5
+g2_J_tol = 0.005
+
+[experiment.stats]
+bootstrap_resamples = 10000
+ci_level = 0.95
 
 # G1-failure tuning grid (calibration seeds only)
 [experiment.tuning]

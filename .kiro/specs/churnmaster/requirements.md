@@ -315,8 +315,8 @@ ChurnMaster is a research codebase that evaluates tabular Q-learning for adaptiv
 #### Acceptance Criteria
 
 1. THE Experiments SHALL run never_replace, kademlia_epoch, always_replace, and oracle_heuristic on 10 calibration seeds for stable and high_churn.
-2. THE Experiments SHALL evaluate gate G1 as passed when the best of kademlia_epoch, always_replace, and oracle_heuristic beats never_replace by at least 5 pp success in high_churn with a paired CI excluding 0.
-3. THE Experiments SHALL evaluate gate G2 as passed when oracle_heuristic exceeds kademlia_epoch by at least 1.5 pp success, or uses at most 60% of kademlia_epoch's pings with success within 0.5 pp.
+2. THE Experiments SHALL evaluate gate G1 as passed when, in high_churn, the best (largest mean ΔJ) of kademlia_epoch, always_replace, and oracle_heuristic beats never_replace by either ΔJ ≥ 0.01 with a paired bootstrap 95% CI (10k resamples) excluding 0, or a mean relative reduction of p95_latency_all_ms ≥ 20% with the paired CI on (never_replace − policy) p95 difference in ms having a lower bound > 0. (revised: gates on J/p95 per user decision after checkpoint 5.17)
+3. THE Experiments SHALL evaluate gate G2 as passed when oracle_heuristic exceeds kademlia_epoch by ΔJ ≥ 0.01, or uses at most 60% of kademlia_epoch's pings with mean ΔJ ≥ −0.005 (J within 0.005). (revised: gates on J/p95 per user decision after checkpoint 5.17)
 4. IF G1 fails, THEN THE Experiments SHALL tune deadline in {1000, 1500, 2000} ms, loss in {1, 2, 5}%, and replicas in {1, 2, 3} on calibration seeds only.
 5. IF G2 fails, THEN THE Experiments SHALL proceed and report limited headroom.
 6. WHEN the gate completes, THE Experiments SHALL record the frozen env config hash in the manifest.

@@ -133,3 +133,71 @@ def test_loader_merges_experiment_file(loader):
     full = load_config(CONFIGS / "base.toml", CONFIGS / "scenarios" / "stable.toml")
     assert (cfg.sim.warmup_s, cfg.sim.measured_s) == (60, 240)
     assert cfg.scenario == full.scenario
+
+
+# --------------------------------------------------------------------------- #
+# Ledger wiring: Metrics.J == Ledger.score() (Requirements 15.4, 15.5, 20.4)
+# --------------------------------------------------------------------------- #
+
+from churnmaster.experiments.runner import POLICY_NAMES  # noqa: E402
+from churnmaster.rl.reward import lookup_loss  # noqa: E402
+from churnmaster.rl.state import allowed_actions  # noqa: E402
+
+MATCHED_FREQS = {False: [0.6, 0.4, 0.0], True: [0.4, 0.3, 0.3]}
+LEDGER_POLICIES = POLICY_NAMES + (f"heuristic:{all_configs()[5].id}",)
+
+
+@pytest.fixture(scope="module")
+def ledger_runs(short_cfg):
+    out = {}
+    for p in LEDGER_POLICIES:
+        kw = {"freqs": MATCHED_FREQS} if p == "matched_random" else {}
+        hooked: list = []
+        res = run_job(Job(p, "high_churn", Split.CALIBRATION, 0, 0, policy_kw=kw), cfg=short_cfg,
+                      keep_records=True, on_transition=hooked.append)
+        out[p] = (res, hooked)
+    return out
+
+
+def test_ledger_identity_every_policy(ledger_runs):
+    assert set(ledger_runs) >= set(POLICY_NAMES)
+    for p, (res, _) in ledger_runs.items():
+        assert math.isfinite(res.metrics.J), p
+        assert abs(res.metrics.J - res.ledger_score) < 1e-9, p
+        row = res.row()
+        assert row["ledger_score"] == res.ledger_score and row["n_transitions"] == res.n_transitions
+
+
+def test_ledger_includes_kademlia_std_costs(ledger_runs, short_cfg):
+    res, _ = ledger_runs["kademlia_std"]
+    epoch_ms = int(short_cfg.sim.epoch_s) * 1000
+    cost_recs = [d for d in res.decisions if d.measured and d.t_ms != d.epoch_idx * epoch_ms]
+    assert cost_recs and sum(d.pings for d in cost_recs) > 0
+    rw, sim = short_cfg.reward, short_cfg.sim
+    meas = [lk for lk in res.lookups if lk.measured]
+    j_nocost = 1.0 - sum(lookup_loss(lk.success, lk.latency_ms, rw.w_L, sim.deadline_ms)
+                         for lk in meas) / len(meas)
+    assert res.ledger_score < j_nocost
+
+
+def test_ledger_transitions(ledger_runs):
+    for p, (res, hooked) in ledger_runs.items():
+        if p == "none":
+            assert res.n_transitions == 0 and res.transitions == [] and hooked == []
+            continue
+        assert res.n_transitions > 0, p
+        assert hooked == res.transitions and len(hooked) == res.n_transitions, p
+        for tr in res.transitions:
+            assert tr.a in {int(a) for a in allowed_actions(tr.s)}, p
+            assert tr.allowed_next == tuple(int(a) for a in allowed_actions(tr.s_next))
+
+
+def test_ledger_identity_violation_raises():
+    from churnmaster.experiments.runner import _check_identity
+    job = Job("none", "high_churn", Split.TEST)
+    _check_identity(math.nan, math.nan, job)
+    _check_identity(0.5, 0.5 + 1e-12, job)
+    with pytest.raises(RuntimeError):
+        _check_identity(0.5, 0.5 + 1e-6, job)
+    with pytest.raises(RuntimeError):
+        _check_identity(0.5, math.nan, job)

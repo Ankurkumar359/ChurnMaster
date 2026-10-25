@@ -193,27 +193,27 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - **Validates: Requirements 19.1**
   - [ ] 5.17 Checkpoint - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Headroom gate and environment freeze
-  - [ ] 6.1 Implement paired bootstrap CI in `experiments/stats.py`
+- [x] 6. Headroom gate and environment freeze
+  - [x] 6.1 Implement paired bootstrap CI in `experiments/stats.py`
     - Paired per-seed differences, 10k-resample percentile 95% CI (seeded)
     - `tests/test_stats.py`: CI on synthetic data with known shift
     - _Requirements: 22.2, 25.4_
-  - [ ] 6.2 Implement `experiments/headroom.py` and env freeze
-    - 10 calibration seeds × {stable, high_churn} for never_replace, kademlia_epoch, always_replace, oracle_heuristic; G1/G2 evaluation; G1-failure tuning over deadline/loss/replicas on calibration seeds only; G2-failure "limited headroom" report
+  - [x] 6.2 Implement `experiments/headroom.py` and env freeze
+    - 10 calibration seeds × {stable, high_churn} for never_replace, kademlia_epoch, always_replace, oracle_heuristic; G1/G2 evaluation on J / p95 latency (revised: gates on J/p95 per user decision after checkpoint 5.17); G1-failure tuning over deadline/loss/replicas on calibration seeds only; G2-failure "limited headroom" report
     - Manifest helpers in `experiments/runner.py` (write frozen env hash; refuse runs whose env hash differs); `configs/experiments/headroom.toml`; `cli headroom`
     - `tests/test_headroom.py`: gate logic on synthetic metrics, frozen-hash mismatch refusal
     - _Requirements: 22.1, 22.2, 22.3, 22.4, 22.5, 22.6, 22.7_
 
-- [ ] 7. Reward, ledger, diagnostics
-  - [ ] 7.1 Implement `rl/reward.py` and `rl/ledger.py`
+- [x] 7. Reward, ledger, diagnostics
+  - [x] 7.1 Implement `rl/reward.py` and `rl/ledger.py`
     - `lookup_loss`, `action_cost`; Ledger accepting only ObservedLookup/DecisionRecord (TypeError otherwise), per-bucket-epoch SUM rewards, transitions with τ=1, dropping open transitions at episode end/empty bucket, `total_reward`, `score`
     - `tests/test_reward.py` (ℓ range), `tests/test_ledger.py` (scripted ledger, masking of null records, TypeError)
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.6, 15.7, 12.5_
-  - [ ] 7.2 Wire Ledger into runner and metrics
+  - [x] 7.2 Wire Ledger into runner and metrics
     - Runner feeds every record to the Ledger; `metrics.py` uses `rl/reward.py`; assert Metrics.J == Ledger.score() including kademlia_std costs
     - Extend `tests/test_runner.py`: identity on real short episodes for every policy
     - _Requirements: 15.4, 15.5, 20.4_
-  - [ ] 7.3 Implement `experiments/diagnostics.py`
+  - [x] 7.3 Implement `experiments/diagnostics.py`
     - Reward-total identity check; reward sanity (discounted returns for dead top/second-tier incumbents: PROBE/REPLACE vs KEEP; live: KEEP vs REPLACE; CIs); coverage (≥80% decisions in states visited ≥50 times over 20 episodes); J vs success Spearman
     - `tests/test_diagnostics.py`: each diagnostic on synthetic records
     - _Requirements: 23.1, 23.2, 23.3, 23.4_

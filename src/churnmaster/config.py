@@ -141,10 +141,12 @@ class AgentConfig:
 
 @dataclass(frozen=True)
 class GatesConfig:
-    g1_min_success_pp: float = _f(5.0, NONNEG)
-    g2_min_success_pp: float = _f(1.5, NONNEG)
-    g2_max_ping_ratio: float = _f(0.6, NONNEG)
-    g2_success_tol_pp: float = _f(0.5, NONNEG)
+    """Headroom gates on J / p95 latency (revised after checkpoint 5.17)."""
+    g1_min_dJ: float = _f(0.01, NONNEG)          # G1 route A: mean ΔJ vs never_replace
+    g1_min_p95_rel: float = _f(0.20, UNIT)       # G1 route B: mean relative p95_all reduction
+    g2_min_dJ: float = _f(0.01, NONNEG)          # G2 route A: oracle − kademlia_epoch ΔJ
+    g2_max_ping_ratio: float = _f(0.6, NONNEG)   # G2 route B: pings(oracle)/pings(kademlia)
+    g2_J_tol: float = _f(0.005, NONNEG)          # G2 route B: mean ΔJ >= −tol
 
 
 @dataclass(frozen=True)

@@ -48,15 +48,16 @@ def test_show_config_unknown_scenario_is_clean_error(capsys):
     assert "config error" in err and "no_such_scenario" in err
 
 
-def test_all_seven_commands_registered():
+def test_all_eight_commands_registered():
     parser = build_parser()
     for name in COMMANDS:
         assert parser.parse_args([name]).command == name
-    assert len(COMMANDS) == 7
+    assert len(COMMANDS) == 8
 
 
 @pytest.mark.parametrize("name", [c for c in COMMANDS
-                                  if c not in ("show-config", "simulate", "compare")])
+                                  if c not in ("show-config", "simulate", "compare", "headroom",
+                                               "diagnostics")])
 def test_stub_commands_exit_nonzero(name, capsys):
     assert main([name]) != 0
     assert "not implemented yet" in capsys.readouterr().err
