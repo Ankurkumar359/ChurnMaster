@@ -78,6 +78,70 @@ plus ``<out>/figures/agent_ablation_J.png`` (forest plot of ΔJ vs canonical),
 ``<out>/manifest.json`` (git hash, config / env hashes, package versions, the
 plan, settings, timings). An existing suite output is never overwritten
 unless ``overwrite=True``.
+
+Reward-weight sweep (Task 12.2, Requirement 28.2) -- EXPLORATORY
+================================================================
+
+Reward-weight sweep: pre-registered analysis plan (fixed before any sweep
+result existed; the same text, :data:`REWARD_ANALYSIS_PLAN`, is stored in
+``<out>/manifest.json`` under ``suites.reward``)
+--------------------------------------------------------------------------
+1. Question. The report hypothesizes that RL trails the tuned heuristic
+   partly because the latency weight w_L=0.3 is too light (RL p95 is 18-38%
+   above the best baseline). The sweep tests whether a higher w_L lowers RL's
+   p95 and narrows the gap.
+2. Cells. The task grid w_M in {0.05, 0.2, 0.5} x w_L in {0.1, 0.3, 0.6}
+   (9 cells), plus a w_L line at the canonical w_M=0.1: w_L in {0.1, 0.6,
+   1.0} (3 cells). Together 12 trained cells. The point w_L=0.3, w_M=0.1 is
+   canonical and reuses the 3 canonical Q-tables (no retraining). In every
+   cell w_R = 1.5 * w_M (the canonical ratio 0.15 / 0.1). Cell names
+   ``wL<w_L>_wM<w_M>``, e.g. ``wL0.6_wM0.2``.
+3. Training. As in the agent suite: 3 runs (runs 0..2), gamma=0.8,
+   alpha_min=0.02, 200 episodes alternating stable / high_churn, the same
+   TRAIN seeds and agent exploration streams; only the reward weights used
+   by the Ledger during training change. Reward is not part of
+   env_config_hash, so the frozen env is unaffected (``check_frozen`` is
+   still called for every cell config).
+4. Evaluation. TEST split, run 0, episodes 0..19 x {stable, high_churn,
+   heldout_medium} (the agent-suite seeds; ``check_test_seeds_disjoint``).
+   Every policy is SCORED UNDER THE CANONICAL WEIGHTS (w_L 0.3, w_M 0.1,
+   w_R 0.15), so J is comparable to the primary study. Additionally
+   ``J_train`` = J under the cell's own training weights, recomputed from the
+   per-lookup / per-decision records with ``rl.reward.lookup_loss`` /
+   ``action_cost``; the same recomputation at the canonical weights is checked
+   to equal the ledger J for every episode. Raw metrics: success_rate,
+   p95_latency_all_ms, mean_latency_ms, pings_per_hour, evictions_per_hour.
+5. References on the same TEST seeds: canonical RL (3 Q-tables),
+   tuned_heuristic, kademlia_epoch, never_replace. Their rows are reused from
+   ``<out>/agent/per_seed.csv`` when the labels / seeds / config hashes /
+   canonical Q-table hashes match and a re-run of the first TEST episode of
+   every reference x scenario reproduces the stored trace and summary hashes;
+   otherwise they are re-run.
+6. Statistics (exploratory, NO multiple-comparison correction; p-values are
+   uncorrected). Per cell x scenario: the paired per-seed difference
+   ``rl_mean(cell) - rl_mean(canonical)`` on canonical-weight J,
+   p95_latency_all_ms, pings_per_hour and success_rate (paired bootstrap 95%
+   CI, 10 000 resamples, seed 0; two-sided Wilcoxon signed-rank p);
+   ``rl_mean(cell) - tuned_heuristic`` on canonical-weight J and on
+   p95_latency_all_ms (the "gap" quantities); per-run values. Monotonic-trend
+   summary: Spearman rho between w_L and the RL mean p95 across the w_L line
+   at w_M=0.1 (w_L 0.1, 0.3, 0.6, 1.0), per scenario -- n=4 points,
+   descriptive only.
+7. Caveat. The tuned heuristic was tuned under the canonical weights; a
+   heuristic re-tuned for other weights is not part of this sweep.
+
+Reward outputs (``<out>/reward/``)::
+
+    per_seed.csv        one row per (label, scenario, TEST episode); J (canonical weights), J_train
+    comparison.csv      cell x reference x scenario x metric: diff, CI, p (uncorrected)
+    per_run.csv         per (cell, run, scenario): metric means + ΔJ / Δp95 vs canonical rl_mean
+    summary.csv         per (label, scenario): mean / std
+    trend.csv           Spearman rho(w_L, RL p95) on the w_M=0.1 line, per scenario
+    greedy_stats.json   greedy-policy statistics and |ΔQ| trend per cell and run
+    cells/<cell>/run<r>/{q_final.npy (+ sidecars), curves.csv}
+
+plus ``<out>/figures/reward_sweep_p95.png``, ``reward_sweep_J.png`` and
+``reward_sweep_tradeoff.png``.
 """
 
 from __future__ import annotations
@@ -115,12 +179,17 @@ __all__ = [
     "CONTEXT_POLICIES", "PROTECTED_NAMES", "AblationSeedError", "TrainVariant",
     "AGENT_VARIANTS", "variant_name_for_drop", "check_test_seeds_disjoint",
     "guard_ablation_out", "AblationReport", "run_agent_suite",
+    "REWARD_ANALYSIS_PLAN", "CANONICAL_WEIGHTS", "RewardCell", "RewardLoader", "reward_cells",
+    "j_from_records", "run_reward_suite",
 ]
 
 ANALYSIS_PLAN = (__doc__ or "Pre-registered analysis plan Outputs (").split("Pre-registered analysis plan", 1)[1].split("Outputs (", 1)[0]
 ANALYSIS_PLAN = "Pre-registered analysis plan" + ANALYSIS_PLAN.rstrip()
+_RW_MARK = "Reward-weight sweep: pre-registered analysis plan"
+REWARD_ANALYSIS_PLAN = _RW_MARK + (__doc__ or _RW_MARK + "Reward outputs (").split(
+    _RW_MARK, 1)[1].split("Reward outputs (", 1)[0].rstrip()
 
-SUITES = ("agent",)
+SUITES = ("agent", "reward")
 CANONICAL_LABEL = "canonical"
 CANONICAL_GAMMA = 0.8
 CANONICAL_ALPHA_MIN = 0.02
@@ -341,6 +410,7 @@ class AblationReport:
     wall_s: float = 0.0
     train_wall_s: float = 0.0
     eval_wall_s: float = 0.0
+    trend: pd.DataFrame | None = None      # reward suite only
 
 
 def _check_canonical_settings(q_paths: Sequence[Path], base: TrainSettings) -> dict[str, Any]:
@@ -642,3 +712,578 @@ def _q_info_only(q_paths: Sequence[Path]) -> dict[str, Any]:
                     "mask_sha256": _sha256_file(mp) if mp.is_file() else None})
     return {"q_tables": out, "train_manifest": None, "settings_match": None,
             "note": "episodes overridden: canonical settings not compared"}
+
+
+# =========================================================================== #
+# Reward-weight sweep (Task 12.2, Requirement 28.2)
+# =========================================================================== #
+
+#: Canonical scoring weights ``(w_L, w_M, w_R)``; every sweep policy is scored under them.
+CANONICAL_WEIGHTS: tuple[float, float, float] = (0.3, 0.1, 0.15)
+REWARD_GRID_W_M: tuple[float, ...] = (0.05, 0.2, 0.5)
+REWARD_GRID_W_L: tuple[float, ...] = (0.1, 0.3, 0.6)
+REWARD_LINE_W_M = 0.1
+REWARD_LINE_W_L: tuple[float, ...] = (0.1, 0.6, 1.0)
+W_R_PER_W_M = 1.5
+REWARD_METRICS: tuple[str, ...] = ("J", "p95_latency_all_ms", "pings_per_hour", "success_rate")
+GAP_METRICS: tuple[str, ...] = ("J", "p95_latency_all_ms")
+REWARD_SUMMARY_METRICS: tuple[str, ...] = ("J", "J_train", "success_rate", "p95_latency_all_ms",
+                                           "mean_latency_ms", "pings_per_hour",
+                                           "evictions_per_hour")
+REWARD_CAVEAT = ("The tuned heuristic was tuned under the canonical weights (w_L 0.3, w_M 0.1, "
+                 "w_R 0.15); a heuristic re-tuned for other weights is not part of this sweep.")
+TREND_NOTE = "Spearman rho over n=4 w_L points at w_M=0.1 (descriptive only; no inference)"
+_J_TOL = 1e-9
+
+
+def _fmt_w(x: float) -> str:
+    s = f"{float(x):g}"
+    return s if ("." in s or "e" in s) else s + ".0"
+
+
+@dataclass(frozen=True)
+class RewardCell:
+    """One reward-weight cell; ``w_R = 1.5 * w_M`` (the canonical ratio)."""
+
+    w_L: float
+    w_M: float
+    origin: str = "grid"        # grid | line | canonical
+
+    @property
+    def w_R(self) -> float:
+        return round(W_R_PER_W_M * float(self.w_M), 12)
+
+    @property
+    def weights(self) -> tuple[float, float, float]:
+        return (float(self.w_L), float(self.w_M), self.w_R)
+
+    @property
+    def name(self) -> str:
+        return f"wL{_fmt_w(self.w_L)}_wM{_fmt_w(self.w_M)}"
+
+    @property
+    def is_canonical(self) -> bool:
+        return all(math.isclose(a, b) for a, b in zip(self.weights, CANONICAL_WEIGHTS))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "w_L": float(self.w_L), "w_M": float(self.w_M),
+                "w_R": self.w_R, "origin": self.origin, "reuses_canonical": self.is_canonical}
+
+
+CANONICAL_CELL = RewardCell(CANONICAL_WEIGHTS[0], CANONICAL_WEIGHTS[1], "canonical")
+
+
+def reward_cells(include_canonical: bool = False) -> list[RewardCell]:
+    """The 12 trained cells (9 grid + 3 line), optionally followed by the canonical cell."""
+    cells = [RewardCell(wl, wm, "grid") for wm in REWARD_GRID_W_M for wl in REWARD_GRID_W_L]
+    cells += [RewardCell(wl, REWARD_LINE_W_M, "line") for wl in REWARD_LINE_W_L]
+    if include_canonical:
+        cells.append(CANONICAL_CELL)
+    return cells
+
+
+REWARD_CELLS: dict[str, RewardCell] = {c.name: c for c in reward_cells()}
+
+
+@dataclass(frozen=True)
+class RewardLoader:
+    """Picklable loader replacing the ``reward`` section of ``base``'s configs.
+
+    The env hash (``sim``, ``scenario``, ``root_seed``) is unchanged; only the
+    Ledger / metrics weights differ.
+    """
+
+    base: Callable[[str], Config]
+    w_L: float
+    w_M: float
+    w_R: float
+
+    def __call__(self, scenario: str) -> Config:
+        from churnmaster.config import validate
+
+        cfg = self.base(scenario)
+        cfg = dataclasses.replace(cfg, reward=dataclasses.replace(
+            cfg.reward, w_L=float(self.w_L), w_M=float(self.w_M), w_R=float(self.w_R)))
+        validate(cfg)
+        return cfg
+
+
+def j_from_records(lookups: Sequence[Any], decisions: Sequence[Any], w_L: float, w_M: float,
+                   w_R: float, deadline_ms: float = 2000) -> float:
+    """J under the given weights from an episode's measured lookup / decision records."""
+    from churnmaster.rl.reward import action_cost, lookup_loss
+
+    lks = [lk for lk in lookups if lk.measured]
+    if not lks:
+        return math.nan
+    loss = sum(lookup_loss(lk.success, lk.latency_ms, w_L, deadline_ms) for lk in lks)
+    cost = sum(action_cost(int(d.pings), int(d.evictions), w_M, w_R)
+               for d in decisions if d.measured)
+    return 1.0 - loss / len(lks) - cost / len(lks)
+
+
+def _same_float(a: float, b: float, tol: float = _J_TOL) -> bool:
+    if math.isnan(a) or math.isnan(b):
+        return math.isnan(a) and math.isnan(b)
+    return abs(a - b) <= tol
+
+
+@dataclass(frozen=True)
+class _RewardEvalTask:
+    job: Job
+    loader: Callable[[str], Config]                  # canonical-weight (scoring) loader
+    train_weights: tuple[float, float, float]
+
+
+def _reward_eval(task: _RewardEvalTask) -> dict[str, Any]:
+    """Pool entry point: one TEST episode -> row with J (canonical weights) and J_train."""
+    from churnmaster.experiments.runner import _worker_config, run_job
+
+    cfg = _worker_config(task.loader, task.job.scenario)
+    res = run_job(task.job, cfg=cfg, keep_records=True)
+    rw, dl = cfg.reward, cfg.sim.deadline_ms
+    j_rec = j_from_records(res.lookups, res.decisions, rw.w_L, rw.w_M, rw.w_R, dl)
+    if not _same_float(j_rec, res.ledger_score):
+        raise RuntimeError(f"record-based J {j_rec!r} != ledger J {res.ledger_score!r} for "
+                           f"{task.job.policy_name}/{task.job.scenario}/ep{task.job.episode}")
+    row = res.row()
+    row["J_recomputed"] = j_rec
+    row["J_train"] = j_from_records(res.lookups, res.decisions, *task.train_weights, dl)
+    return row
+
+
+def _run_reward_eval(tasks: Sequence[_RewardEvalTask], workers: int | None) -> list[dict[str, Any]]:
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    tasks = list(tasks)
+    if workers is not None and workers > 1 and len(tasks) > 1:
+        with ProcessPoolExecutor(max_workers=min(int(workers), len(tasks)),
+                                 mp_context=multiprocessing.get_context("spawn")) as ex:
+            return list(ex.map(_reward_eval, tasks, chunksize=2))
+    return [_reward_eval(t) for t in tasks]
+
+
+def _cell_cols(cell: RewardCell | None) -> dict[str, Any]:
+    if cell is None:
+        return {"cell": "", "w_L": math.nan, "w_M": math.nan, "w_R": math.nan}
+    return {"cell": cell.name, "w_L": float(cell.w_L), "w_M": float(cell.w_M), "w_R": cell.w_R}
+
+
+def _reuse_references(out: Path, labels: Sequence[tuple[str, str, int, str, Any]],
+                      scenarios: Sequence[str], eps: Sequence[int],
+                      cfg_hashes: Mapping[str, str], canon_q_sha: Sequence[str],
+                      tuned_impl: str) -> tuple[pd.DataFrame | None, dict[str, Any]]:
+    """Reference rows from ``<out>/agent/per_seed.csv`` if they match exactly (else None)."""
+    path, man = out / "agent" / "per_seed.csv", out / MANIFEST_NAME
+    info: dict[str, Any] = {"candidate": str(path)}
+
+    def no(reason: str) -> tuple[None, dict[str, Any]]:
+        info.update(reused=False, reason=reason)
+        return None, info
+
+    if not path.is_file() or not man.is_file():
+        return no("agent per_seed.csv / manifest not found")
+    try:
+        agent = json.loads(man.read_text(encoding="utf-8"))["suites"]["agent"]
+        old_sha = [q["sha256"] for q in agent["canonical"]["q_tables"]]
+        old_eval = agent["eval_seeds"]
+    except (KeyError, TypeError, json.JSONDecodeError) as e:
+        return no(f"agent manifest unusable: {e!r}")
+    if list(old_sha) != list(canon_q_sha):
+        return no("canonical Q-table hashes differ from the agent suite")
+    if old_eval.get("split") != "test" or int(old_eval.get("run", -1)) != TEST_RUN or \
+            not set(eps) <= set(old_eval.get("episodes", [])):
+        return no("agent suite used different TEST seeds")
+    old = pd.read_csv(path, float_precision="round_trip")
+    names = [lab for lab, *_ in labels]
+    sub = old[old["policy"].isin(names) & (old["split"] == "test") & (old["run"] == TEST_RUN)
+              & old["scenario"].isin(list(scenarios)) & old["episode"].isin(list(eps))].copy()
+    if len(sub) != len(names) * len(scenarios) * len(eps) or \
+            sub.duplicated(list(KEY_COLUMNS)).any():
+        return no(f"expected {len(names) * len(scenarios) * len(eps)} unique reference rows, "
+                  f"found {len(sub)}")
+    impl = dict(zip(sub["policy"], sub["policy_impl"]))
+    if impl.get(GLOBAL_LABEL) != tuned_impl:
+        return no(f"tuned_heuristic impl {impl.get(GLOBAL_LABEL)!r} != {tuned_impl!r}")
+    for s in scenarios:
+        hs = set(sub.loc[sub["scenario"] == s, "config_hash"])
+        if hs != {cfg_hashes[s]}:
+            return no(f"config hash mismatch for {s}: {sorted(hs)} vs {cfg_hashes[s]}")
+    sub["J_train"] = sub["J"].astype(float)
+    sub["J_recomputed"] = sub["ledger_score"].astype(float)
+    sub["source"] = "reused:agent/per_seed.csv"
+    info.update(reused=True, sha256=_sha256_file(path), n_rows=len(sub))
+    return sub, info
+
+
+def _ci_halfwidth(std: float, n: int) -> float:
+    return 1.96 * std / math.sqrt(n) if n > 1 and math.isfinite(std) else math.nan
+
+
+def run_reward_suite(configs_dir: Path | str,
+                     manifest_path: Path | str = "results/headroom/manifest.json",
+                     out_dir: Path | str = "results/ablations", *,
+                     experiment_path: Path | str | None = None,
+                     cells: Sequence[str] | None = None,
+                     runs: Sequence[int] = RUNS, episodes: int | None = None,
+                     n_seeds: int = DEFAULT_N_SEEDS,
+                     scenarios: Sequence[str] = EVAL_SCENARIOS,
+                     canonical_q: Sequence[Path | str] | None = None,
+                     tune_selected: Path | str = "results/tune/selected.json",
+                     workers: int | None = None, n_resamples: int = 10_000,
+                     overwrite: bool = False, log_every: int = 0, reuse_references: bool = True,
+                     progress: Callable[[str], None] | None = None) -> AblationReport:
+    """Train, evaluate and compare the reward-weight cells (see :data:`REWARD_ANALYSIS_PLAN`)."""
+    from scipy.stats import spearmanr
+
+    from churnmaster.experiments.diagnostics import _frozen_loader
+    from churnmaster.plots import plot_reward_sweep, plot_reward_tradeoff
+
+    t0 = time.perf_counter()
+    say = progress or (lambda m: None)
+    configs_dir, manifest_path = Path(configs_dir), Path(manifest_path)
+    out = guard_ablation_out(out_dir)
+    suite_dir = out / "reward"
+    if (suite_dir / "comparison.csv").exists() and not overwrite:
+        raise ValueError(f"{suite_dir} already holds reward-sweep results; pass overwrite=True "
+                         f"(--overwrite) to replace them")
+    names = list(cells) if cells is not None else list(REWARD_CELLS)
+    unknown = [n for n in names if n not in REWARD_CELLS]
+    if unknown or not names or len(set(names)) != len(names):
+        raise ValueError(f"bad cell list {names}; known: {list(REWARD_CELLS)} (the canonical "
+                         f"cell {CANONICAL_CELL.name} reuses the canonical Q-tables)")
+    runs = [int(r) for r in runs]
+    if not runs or len(set(runs)) != len(runs):
+        raise ValueError(f"runs must be unique, got {runs}")
+    if n_seeds < 1:
+        raise ValueError("n_seeds must be >= 1")
+    exp = Path(experiment_path) if experiment_path is not None else \
+        configs_dir / "experiments" / "train.toml"
+    q_paths = [Path(p) for p in (canonical_q if canonical_q is not None else default_q_paths(len(runs)))]
+    if len(q_paths) != len(runs):
+        raise ValueError(f"need one canonical Q-table per run ({len(runs)}), got {len(q_paths)}")
+    cs = [REWARD_CELLS[n] for n in names]
+
+    # ---- configs, frozen env (read-only), seeds --------------------------------
+    loader = _frozen_loader(configs_dir, exp, manifest_path)
+    all_scn = list(dict.fromkeys([*TRAIN_SCENARIOS, *scenarios]))
+    cfgs: dict[str, Config] = {s: loader(s) for s in all_scn}
+    for s, c in cfgs.items():
+        w = (c.reward.w_L, c.reward.w_M, c.reward.w_R)
+        if not all(math.isclose(a, b) for a, b in zip(w, CANONICAL_WEIGHTS)):
+            raise ValueError(f"config reward weights {w} for {s} are not the canonical "
+                             f"{CANONICAL_WEIGHTS}; the sweep scores under the canonical weights")
+    env_hashes = {s: check_frozen(manifest_path, c) for s, c in cfgs.items()}
+    cfg_hashes = {s: config_hash(c) for s, c in cfgs.items()}
+    cell_loaders: dict[str, RewardLoader] = {}
+    cell_cfg_hashes: dict[str, dict[str, str]] = {}
+    for c in cs:
+        ld = RewardLoader(loader, *c.weights)
+        cell_loaders[c.name] = ld
+        cell_cfg_hashes[c.name] = {}
+        for s in all_scn:
+            cc = ld(s)
+            if check_frozen(manifest_path, cc) != env_hashes[s]:
+                raise ValueError(f"cell {c.name} changes the env hash of {s}")
+            cell_cfg_hashes[c.name][s] = config_hash(cc)
+    roots = {int(c.root_seed) for c in cfgs.values()}
+    if len(roots) != 1:
+        raise ValueError(f"scenarios disagree on root_seed: {sorted(roots)}")
+    root = roots.pop()
+    eps_list = list(range(int(n_seeds)))
+    disjoint = check_test_seeds_disjoint(root, eps_list)
+    id_bits = cfgs[TRAIN_SCENARIOS[0]].sim.id_bits
+
+    base = TrainSettings.from_config(cfgs[TRAIN_SCENARIOS[0]], TRAIN_SCENARIOS,
+                                     gamma=CANONICAL_GAMMA, alpha_min=CANONICAL_ALPHA_MIN,
+                                     episodes=episodes)
+    base = dataclasses.replace(base, validate_every=base.episodes)
+    canon_info = _check_canonical_settings(q_paths, base) if episodes is None else \
+        _q_info_only(q_paths)
+    canon_sha = [q["sha256"] for q in canon_info["q_tables"]]
+    selected = load_selected(tune_selected)
+    tuned_impl = tuned_policy_names(selected)[GLOBAL_LABEL]
+
+    # ---- training (canonical path; only the Ledger weights differ) ----------------
+    specs = [TrainSpec(cell_loaders[c.name], base, r, log_every) for c in cs for r in runs]
+    say(f"ablate[reward]: training {len(specs)} runs ({len(cs)} cells x {len(runs)} runs x "
+        f"{base.episodes} episodes, workers={workers}); {CANONICAL_CELL.name} reuses the "
+        f"canonical Q-tables")
+    t_tr = time.perf_counter()
+    outputs: list[TrainOutput] = run_trainings(specs, workers=workers)
+    train_wall = time.perf_counter() - t_tr
+    say(f"ablate[reward]: training done in {train_wall:.1f}s")
+
+    files: list[Path] = []
+    trained: dict[str, dict[int, TrainOutput]] = {}
+    it = iter(outputs)
+    for c in cs:
+        for r in runs:
+            o = next(it)
+            trained.setdefault(c.name, {})[r] = o
+            d = suite_dir / "cells" / c.name / f"run{r}"
+            d.mkdir(parents=True, exist_ok=True)
+            files.append(o.final.save(d / "q_final.npy"))
+            o.curves.to_csv(d / "curves.csv", index=False)
+            files.append(d / "curves.csv")
+
+    # ---- evaluation on TEST seeds (scored under the canonical weights) ------------
+    ref_labels: list[tuple[str, str, int, str, Any]] = []
+    for r, p in zip(runs, q_paths):
+        lab = _run_label(CANONICAL_LABEL, r)
+        ref_labels.append((lab, CANONICAL_LABEL, r, str(p),
+                           EncodedLearned(QAgent.load(p), name=lab, id_bits=id_bits)))
+    for c in CONTEXT_POLICIES:
+        impl = tuned_impl if c == GLOBAL_LABEL else c
+        ref_labels.append((c, c, -1, impl, impl))
+    cell_of = {CANONICAL_LABEL: CANONICAL_CELL, **{c.name: c for c in cs}}
+
+    tasks: list[_RewardEvalTask] = []
+    meta: list[tuple[str, str, int, str, str]] = []      # (label, group, run, impl, role)
+    for c in cs:
+        for r in runs:
+            lab = _run_label(c.name, r)
+            pol = EncodedLearned(trained[c.name][r].final, name=lab, id_bits=id_bits)
+            for s in scenarios:
+                for ep in eps_list:
+                    tasks.append(_RewardEvalTask(Job(pol, s, TEST_SPLIT, TEST_RUN, ep), loader,
+                                                 c.weights))
+                    meta.append((lab, c.name, r, f"reward:{c.name}", "cell"))
+    reused, ref_info = (None, {"reused": False, "reason": "reuse disabled"})
+    if reuse_references:
+        reused, ref_info = _reuse_references(out, ref_labels, scenarios, eps_list, cfg_hashes,
+                                             canon_sha, tuned_impl)
+    ref_eps = eps_list[:1] if reused is not None else eps_list
+    role = "spot_check" if reused is not None else "reference"
+    for lab, grp, r, impl, pol in ref_labels:
+        for s in scenarios:
+            for ep in ref_eps:
+                tasks.append(_RewardEvalTask(Job(pol, s, TEST_SPLIT, TEST_RUN, ep), loader,
+                                             CANONICAL_WEIGHTS))
+                meta.append((lab, grp, r, impl, role))
+    say(f"ablate[reward]: evaluating {len(tasks)} TEST episodes (references "
+        f"{'reused + ' + str(len(ref_labels) * len(scenarios)) + ' spot checks' if reused is not None else 're-run'})")
+    t_ev = time.perf_counter()
+    results = _run_reward_eval(tasks, workers)
+    eval_wall = time.perf_counter() - t_ev
+    say(f"ablate[reward]: evaluation done in {eval_wall:.1f}s")
+
+    rows, spot = [], []
+    for (lab, grp, r, impl, rl), row in zip(meta, results):
+        row = dict(row)
+        row.pop("policy")
+        full_row = {"policy": lab, "group": grp, "rl_run": r, "policy_impl": impl,
+                    **_cell_cols(cell_of.get(grp)), **row, "source": "evaluated"}
+        (spot if rl == "spot_check" else rows).append(full_row)
+    if reused is not None:
+        ref_info["spot_checks"] = []
+        old = reused.set_index(["policy", "scenario", "episode"])
+        ok = True
+        for sr in spot:
+            o = old.loc[(sr["policy"], sr["scenario"], sr["episode"])]
+            match = (o["trace_hash"] == sr["trace_hash"] and o["summary_hash"] == sr["summary_hash"]
+                     and _same_float(float(o["J"]), float(sr["J"])))
+            ok &= bool(match)
+            ref_info["spot_checks"].append({"policy": sr["policy"], "scenario": sr["scenario"],
+                                            "episode": sr["episode"], "match": bool(match)})
+        if ok:
+            ref_rows = reused.copy()
+            for k, v in _cell_cols(None).items():
+                ref_rows[k] = v
+            for k, v in _cell_cols(CANONICAL_CELL).items():
+                ref_rows.loc[ref_rows["group"] == CANONICAL_LABEL, k] = v
+            rows_df = pd.concat([pd.DataFrame(rows), ref_rows[list(pd.DataFrame(rows).columns)]],
+                                ignore_index=True)
+        else:
+            say("ablate[reward]: reference spot check failed; re-running the references")
+            ref_info.update(reused=False, reason="spot check mismatch (re-run)")
+            rt, rm = [], []
+            for lab, grp, r, impl, pol in ref_labels:
+                for s in scenarios:
+                    for ep in eps_list:
+                        rt.append(_RewardEvalTask(Job(pol, s, TEST_SPLIT, TEST_RUN, ep), loader,
+                                                  CANONICAL_WEIGHTS))
+                        rm.append((lab, grp, r, impl))
+            t_re = time.perf_counter()
+            for (lab, grp, r, impl), row in zip(rm, _run_reward_eval(rt, workers)):
+                row = dict(row)
+                row.pop("policy")
+                rows.append({"policy": lab, "group": grp, "rl_run": r, "policy_impl": impl,
+                             **_cell_cols(cell_of.get(grp)), **row, "source": "evaluated"})
+            eval_wall += time.perf_counter() - t_re
+            rows_df = pd.DataFrame(rows)
+    else:
+        rows_df = pd.DataFrame(rows)
+    df = rows_df
+    if df.duplicated(list(KEY_COLUMNS)).any():
+        raise ValueError("duplicate (label, scenario, split, run, episode) rows")
+    for m in REWARD_SUMMARY_METRICS:
+        bad = df[~df[m].astype(float).map(math.isfinite)]
+        if not bad.empty:
+            raise ValueError(f"non-finite {m} in {len(bad)} reward-sweep rows, e.g. "
+                             f"{bad[['policy', 'scenario', 'episode']].iloc[0].to_dict()}")
+    j_dev = float((df["J_recomputed"].astype(float) - df["ledger_score"].astype(float)).abs().max())
+    refs_mask = df["group"].isin([CANONICAL_LABEL, *CONTEXT_POLICIES])
+    if not np.allclose(df.loc[refs_mask, "J_train"], df.loc[refs_mask, "J"], rtol=0, atol=_J_TOL):
+        raise RuntimeError("J_train != J for a reference scored under the canonical weights")
+
+    # ---- statistics (exploratory; uncorrected) ------------------------------------
+    groups = [CANONICAL_LABEL, *[c.name for c in cs]]
+    means = []
+    for g in groups:
+        avg = st.average_over_runs(df, [_run_label(g, r) for r in runs], g,
+                                   metrics=list(REWARD_SUMMARY_METRICS))
+        means.append(avg.assign(group=g, rl_run=-1, policy_impl=f"rl_mean({g})",
+                                **_cell_cols(cell_of[g])))
+    full = pd.concat([df, *means], ignore_index=True)
+
+    def crow(comparison: str, s: str, m: str, a: str, b: str) -> dict[str, Any]:
+        cc = cell_of.get(a)
+        return {"comparison": comparison, **_cell_cols(cc),
+                **_compare_row(full, s, m, a, b, n_resamples)}
+
+    comp = []
+    for c in cs:
+        for s in scenarios:
+            for m in REWARD_METRICS:
+                comp.append(crow("vs_canonical", s, m, c.name, CANONICAL_LABEL))
+    for g in groups:
+        for s in scenarios:
+            for m in GAP_METRICS:
+                comp.append(crow("vs_tuned_heuristic", s, m, g, GLOBAL_LABEL))
+    comparison = pd.DataFrame(comp)
+
+    pr = []
+    for g in groups:
+        for r in runs:
+            lab = _run_label(g, r)
+            for s in scenarios:
+                sub = df[(df["policy"] == lab) & (df["scenario"] == s)]
+                row: dict[str, Any] = {"group": g, **_cell_cols(cell_of[g]), "run": r,
+                                       "label": lab, "scenario": s, "n": len(sub)}
+                for m in REWARD_SUMMARY_METRICS:
+                    row[f"{m}_mean"] = float(sub[m].astype(float).mean())
+                for m, tag in (("J", "dJ"), ("p95_latency_all_ms", "dp95")):
+                    c = _compare_row(full, s, m, lab, CANONICAL_LABEL, n_resamples)
+                    row.update({f"{tag}_vs_canonical_mean": c["mean_diff"],
+                                f"{tag}_ci_lo": c["ci_lo"], f"{tag}_ci_hi": c["ci_hi"],
+                                f"{tag}_p_uncorrected": c["p_uncorrected"]})
+                pr.append(row)
+    per_run = pd.DataFrame(pr)
+
+    srows = []
+    for (pol, s), g in full.groupby(["policy", "scenario"], sort=False):
+        grp = g["group"].iloc[0]
+        kind = "reference" if grp in CONTEXT_POLICIES else ("rl_mean" if pol == grp else "run")
+        row = {"policy": pol, "group": grp, "kind": kind, **_cell_cols(cell_of.get(grp)),
+               "scenario": s, "n": len(g)}
+        for m in REWARD_SUMMARY_METRICS:
+            x = g[m].astype(float)
+            row[f"{m}_mean"] = float(x.mean())
+            row[f"{m}_std"] = float(x.std(ddof=1)) if len(x) > 1 else math.nan
+        srows.append(row)
+    summary = pd.DataFrame(srows)
+
+    trows = []
+    line = summary[(summary["kind"] == "rl_mean") &
+                   np.isclose(summary["w_M"].astype(float), REWARD_LINE_W_M)]
+    for s in scenarios:
+        pts = line[line["scenario"] == s].sort_values("w_L")
+        x = pts["w_L"].astype(float).to_numpy()
+        y = pts["p95_latency_all_ms_mean"].astype(float).to_numpy()
+        rho = float(spearmanr(x, y)[0]) if len(x) >= 2 and np.ptp(y) > 0 else math.nan
+        trows.append({"scenario": s, "metric": "p95_latency_all_ms", "w_M": REWARD_LINE_W_M,
+                      "n_points": len(x), "w_L_values": json.dumps([float(v) for v in x]),
+                      "rl_mean_values": json.dumps([float(v) for v in y]),
+                      "cells": json.dumps(list(pts["cell"])), "spearman_rho": rho,
+                      "note": TREND_NOTE})
+    trend = pd.DataFrame(trows)
+
+    greedy: dict[str, Any] = {}
+    for r, p in zip(runs, q_paths):
+        ent: dict[str, Any] = {"greedy": greedy_stats(QAgent.load(p))}
+        cpath = Path(p).parent / "curves.csv"
+        if cpath.is_file():
+            ent["dq"] = dq_summary(pd.read_csv(cpath))
+        greedy.setdefault(CANONICAL_LABEL, {})[f"run{r}"] = ent
+    for c in cs:
+        for r in runs:
+            o = trained[c.name][r]
+            greedy.setdefault(c.name, {})[f"run{r}"] = {
+                "weights": c.to_dict(), "greedy": greedy_stats(o.final), "dq": dq_summary(o.curves),
+                "train_wall_s": o.wall_s,
+                "n_updates_total": int(o.curves["n_updates"].sum()),
+                "n_transitions_total": int(o.curves["n_transitions"].sum())}
+
+    # ---- write --------------------------------------------------------------------
+    suite_dir.mkdir(parents=True, exist_ok=True)
+    tables = {"per_seed.csv": df, "comparison.csv": comparison, "per_run.csv": per_run,
+              "summary.csv": summary, "trend.csv": trend}
+    for fname, t in tables.items():
+        t.to_csv(suite_dir / fname, index=False)
+        files.append(suite_dir / fname)
+    files.append(_write_json(suite_dir / "greedy_stats.json", greedy))
+    fig_dir = out / "figures"
+    refs_plot = (GLOBAL_LABEL, "kademlia_epoch")
+    files.append(plot_reward_sweep(
+        summary, "p95_latency_all_ms", fig_dir / "reward_sweep_p95.png", references=refs_plot,
+        ylabel="RL p95 latency, all lookups (ms)",
+        title="Reward sweep: RL p95 vs w_L per w_M (TEST seeds; mean ± 95% CI over seeds)"))
+    files.append(plot_reward_sweep(
+        summary, "J", fig_dir / "reward_sweep_J.png", references=refs_plot,
+        ylabel="J under the canonical weights",
+        title="Reward sweep: canonical-weight J vs w_L per w_M (TEST seeds; mean ± 95% CI)"))
+    files.append(plot_reward_tradeoff(
+        summary, fig_dir / "reward_sweep_tradeoff.png",
+        references=(GLOBAL_LABEL, "kademlia_epoch", "never_replace"),
+        title="Reward sweep: p95 vs maintenance pings/h (cells = RL mean over runs)"))
+
+    wall = time.perf_counter() - t0
+    suite_manifest = {
+        "suite": "reward", "created_utc": _now(), "git_hash": git_hash(),
+        "packages": package_versions(("numpy", "scipy", "pandas", "matplotlib", "churnmaster")),
+        "analysis_plan": REWARD_ANALYSIS_PLAN, "exploratory": True,
+        "multiple_comparison_correction": "none (exploratory; p-values uncorrected)",
+        "caveat": REWARD_CAVEAT, "trend_note": TREND_NOTE,
+        "frozen_manifest": {"path": str(manifest_path), "sha256": _sha256_file(manifest_path),
+                            "access": "read-only (check_frozen)"},
+        "env_hashes": env_hashes, "config_hashes": cfg_hashes,
+        "cell_config_hashes": cell_cfg_hashes,
+        "experiment": str(exp), "root_seed": root,
+        "scoring_weights": dict(zip(("w_L", "w_M", "w_R"), CANONICAL_WEIGHTS)),
+        "cells": {c.name: c.to_dict() for c in [*cs, CANONICAL_CELL]},
+        "w_R_rule": f"w_R = {W_R_PER_W_M} * w_M",
+        "train_settings": base.to_dict(), "train_split": "train", "runs": runs,
+        "eval_seeds": disjoint, "eval_scenarios": list(scenarios),
+        "canonical": canon_info, "references": ref_info,
+        "context_policies": {c: (tuned_impl if c == GLOBAL_LABEL else c) for c in CONTEXT_POLICIES},
+        "tune_selected": {"path": str(tune_selected), "global": selected.get("global")},
+        "j_recomputation": {"method": "rl.reward.lookup_loss / action_cost over measured "
+                                      "records", "max_abs_dev_vs_ledger": j_dev,
+                            "tolerance": _J_TOL},
+        "stats": {"bootstrap_resamples": n_resamples, "ci_level": 0.95, "bootstrap_seed": 0,
+                  "wilcoxon": "two-sided, zero_method=wilcox", "pairing": list(st.EVAL_KEYS),
+                  "rl_mean": "per-seed mean over the runs of a cell"},
+        "n_train_runs": len(specs), "n_eval_jobs": len(tasks), "workers": workers,
+        "timings_s": {"train": round(train_wall, 1), "eval": round(eval_wall, 1),
+                      "total": round(wall, 1),
+                      "per_train_run": {_run_label(c.name, r): round(trained[c.name][r].wall_s, 1)
+                                        for c in cs for r in runs}},
+        "outputs": sorted(str(Path(f).relative_to(out)) for f in files),
+        "per_seed_sha256": _sha256_file(suite_dir / "per_seed.csv"),
+    }
+    mpath = out / MANIFEST_NAME
+    top: dict[str, Any] = {}
+    if mpath.is_file():
+        top = json.loads(mpath.read_text(encoding="utf-8"))
+    top.setdefault("kind", "churnmaster-ablations")
+    top["exploratory"] = True
+    top["updated_utc"] = _now()
+    top["reward_analysis_plan"] = REWARD_ANALYSIS_PLAN
+    top.setdefault("suites", {})["reward"] = suite_manifest
+    write_manifest(mpath, _clean(top))
+    files.append(mpath)
+    say(f"ablate[reward]: wrote {len(files)} files to {out} ({wall:.1f}s)")
+    return AblationReport("reward", out, df, comparison, per_run, summary, greedy, suite_manifest,
+                          files, wall, train_wall, eval_wall, trend=trend)

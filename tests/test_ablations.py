@@ -359,3 +359,183 @@ def test_default_path_reproduces_canonical_run0():
                                    alpha_min=0.02)
     o = train_agent(TrainSpec(ld, st, 0))
     np.testing.assert_array_equal(o.final.Q, np.load(q))
+
+
+# --------------------------------------------------------------------------- #
+# Reward-weight sweep (task 12.2, Requirement 28.2)
+# --------------------------------------------------------------------------- #
+
+from churnmaster.experiments.ablations import (CANONICAL_CELL, CANONICAL_WEIGHTS,  # noqa: E402
+                                               REWARD_ANALYSIS_PLAN, REWARD_CELLS, RewardLoader,
+                                               _reward_eval, _RewardEvalTask, j_from_records,
+                                               reward_cells, run_reward_suite)
+from churnmaster.config import config_hash  # noqa: E402
+from churnmaster.experiments.runner import env_config_hash  # noqa: E402
+from churnmaster.rl.reward import action_cost, lookup_loss  # noqa: E402
+
+CELL_W = (0.6, 0.2, 0.3)      # wL0.6_wM0.2
+
+
+def test_reward_cell_grid():
+    cells = reward_cells()
+    assert len(cells) == 12 and list(REWARD_CELLS) == [c.name for c in cells]
+    grid = {(c.w_M, c.w_L) for c in cells if c.origin == "grid"}
+    assert grid == {(m, l) for m in (0.05, 0.2, 0.5) for l in (0.1, 0.3, 0.6)}
+    assert sorted(c.w_L for c in cells if c.origin == "line") == [0.1, 0.6, 1.0]
+    assert all(c.w_M == 0.1 for c in cells if c.origin == "line")
+    for c in cells:
+        assert c.w_R == pytest.approx(1.5 * c.w_M) and not c.is_canonical
+    assert REWARD_CELLS["wL0.6_wM0.2"].weights == CELL_W
+    assert "wL1.0_wM0.1" in REWARD_CELLS and "wL0.05_wM0.05" not in REWARD_CELLS
+    # the canonical point is not trained: it reuses the canonical Q-tables
+    assert CANONICAL_CELL.name == "wL0.3_wM0.1" and CANONICAL_CELL.is_canonical
+    assert CANONICAL_CELL.weights == CANONICAL_WEIGHTS and CANONICAL_CELL.name not in REWARD_CELLS
+    assert reward_cells(include_canonical=True)[-1] == CANONICAL_CELL
+    assert CANONICAL_CELL.to_dict()["reuses_canonical"] is True
+    assert "NO multiple-comparison correction" in REWARD_ANALYSIS_PLAN
+    assert "SCORED UNDER THE CANONICAL WEIGHTS" in REWARD_ANALYSIS_PLAN
+    assert "re-tuned" in REWARD_ANALYSIS_PLAN and "Pre-registered" not in REWARD_ANALYSIS_PLAN
+
+
+def test_reward_loader_changes_only_reward(loader):
+    ld = RewardLoader(loader, *CELL_W)
+    c0, c1 = loader("stable"), ld("stable")
+    assert (c1.reward.w_L, c1.reward.w_M, c1.reward.w_R) == CELL_W
+    assert (c0.reward.w_L, c0.reward.w_M, c0.reward.w_R) == CANONICAL_WEIGHTS
+    assert env_config_hash(c1) == env_config_hash(c0) and config_hash(c1) != config_hash(c0)
+    assert c1.sim == c0.sim and c1.scenario == c0.scenario and c1.agent == c0.agent
+    assert pickle.loads(pickle.dumps(ld)) == ld and hash(ld) == hash(RewardLoader(loader, *CELL_W))
+
+
+def _bk_reward(res, b, k, w, epoch_ms, deadline):
+    r = -sum(lookup_loss(lk.success, lk.latency_ms, w[0], deadline) for lk in res.lookups
+             if lk.bucket == b and int(lk.t_ms) // epoch_ms == k)
+    r -= sum(action_cost(d.pings, d.evictions, w[1], w[2]) for d in res.decisions
+             if d.bucket == b and d.epoch_idx == k)
+    return r
+
+
+def test_training_rewards_use_cell_weights(loader, trained):
+    ld = RewardLoader(loader, *CELL_W)
+    job = Job("kademlia_epoch", "stable", Split.TRAIN, 0, 0)
+    got: dict[str, list] = {"can": [], "cell": []}
+    rc = run_job(job, cfg=loader("stable"), keep_records=True, on_transition=got["can"].append)
+    rw = run_job(job, cfg=ld("stable"), keep_records=True, on_transition=got["cell"].append)
+    assert rc.trace.trace_hash == rw.trace.trace_hash                  # same trajectory
+    key = lambda t: (t.bucket, t.epoch_idx, t.s, t.a, t.s_next)        # noqa: E731
+    assert [key(t) for t in got["can"]] == [key(t) for t in got["cell"]] and got["can"]
+    assert any(abs(a.r - b.r) > 1e-9 for a, b in zip(got["can"], got["cell"]))
+    cfg = loader("stable")
+    em, dl = int(cfg.sim.epoch_s) * 1000, cfg.sim.deadline_ms
+    for t in got["cell"][:200]:
+        assert t.r == pytest.approx(_bk_reward(rw, t.bucket, t.epoch_idx, CELL_W, em, dl),
+                                    abs=1e-9)
+    for t in got["can"][:200]:
+        assert t.r == pytest.approx(
+            _bk_reward(rc, t.bucket, t.epoch_idx, CANONICAL_WEIGHTS, em, dl), abs=1e-9)
+    # training through the RewardLoader learns from the cell rewards
+    o = train_agent(TrainSpec(ld, SETTINGS, 0))
+    assert not np.array_equal(o.final.Q, trained["canonical"].final.Q)
+
+
+def test_record_based_J_and_eval_scoring(loader, trained):
+    pol = EncodedLearned(trained["canonical"].final, name="c", id_bits=8)
+    job = Job(pol, "high_churn", Split.TEST, 0, 0)
+    res = run_job(job, cfg=loader("high_churn"), keep_records=True)
+    dl = loader("high_churn").sim.deadline_ms
+    assert j_from_records(res.lookups, res.decisions, *CANONICAL_WEIGHTS, dl) == \
+        pytest.approx(res.ledger_score, abs=1e-12)
+    cell = run_job(job, cfg=RewardLoader(loader, *CELL_W)("high_churn"))
+    j_cell = j_from_records(res.lookups, res.decisions, *CELL_W, dl)
+    assert j_cell == pytest.approx(cell.ledger_score, abs=1e-12)
+    assert abs(j_cell - res.ledger_score) > 1e-6
+    # the eval worker scores under the canonical loader's weights; J_train under the cell's
+    row = _reward_eval(_RewardEvalTask(job, loader, CELL_W))
+    assert row["J"] == res.metrics.J and row["J_recomputed"] == pytest.approx(row["J"], abs=1e-12)
+    assert row["J_train"] == pytest.approx(cell.ledger_score, abs=1e-12)
+
+
+def test_reward_suite_end_to_end(tmp_path, short_exp, manifest, trained):
+    can = trained["canonical"].final.save(tmp_path / "canon" / "run0" / "q_final.npy")
+    sel = tmp_path / "selected.json"
+    sel.write_text(json.dumps({"global": "f=2,po=0,rs=1,ps=0,tg=all", "per_scenario": {}}),
+                   encoding="utf-8")
+    out = tmp_path / "abl"
+    common = dict(experiment_path=short_exp, runs=(0,), episodes=2, n_seeds=2,
+                  canonical_q=[can], tune_selected=sel, workers=1, n_resamples=200)
+    run_agent_suite(CONFIGS, manifest, out, variants=["gamma0"], **common)
+    agent_before = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    agent_files = {p: p.read_bytes() for p in (out / "agent").rglob("*") if p.is_file()}
+    man_before = manifest.read_bytes()
+    cells = ["wL0.6_wM0.2", "wL1.0_wM0.1"]
+    rep = run_reward_suite(CONFIGS, manifest, out, cells=cells, **common)
+    assert manifest.read_bytes() == man_before
+    assert {p: p.read_bytes() for p in (out / "agent").rglob("*") if p.is_file()} == agent_files
+    d = out / "reward"
+    for f in ("per_seed.csv", "comparison.csv", "per_run.csv", "summary.csv", "trend.csv",
+              "greedy_stats.json"):
+        assert (d / f).is_file()
+    for c in cells:
+        assert (d / "cells" / c / "run0" / "q_final.npy").is_file()
+        assert (d / "cells" / c / "run0" / "curves.csv").is_file()
+    for f in ("reward_sweep_p95.png", "reward_sweep_J.png", "reward_sweep_tradeoff.png"):
+        assert (out / "figures" / f).is_file()
+    # manifest: read-modify-write keeps the agent suite intact
+    m = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert m["suites"]["agent"] == agent_before["suites"]["agent"]
+    assert m["analysis_plan"] == agent_before["analysis_plan"]
+    sm = m["suites"]["reward"]
+    assert sm["analysis_plan"] == REWARD_ANALYSIS_PLAN == m["reward_analysis_plan"]
+    assert sm["scoring_weights"] == {"w_L": 0.3, "w_M": 0.1, "w_R": 0.15}
+    assert sm["references"]["reused"] is True
+    assert sm["references"]["spot_checks"] and all(s["match"] for s in sm["references"]["spot_checks"])
+    assert sm["j_recomputation"]["max_abs_dev_vs_ledger"] <= 1e-9
+    assert set(sm["env_hashes"].values()) and sm["eval_seeds"]["overlap"] is False
+    ps = pd.read_csv(d / "per_seed.csv")
+    assert set(ps["split"]) == {"test"} and set(ps["episode"]) == {0, 1}
+    assert set(ps["group"]) == {"canonical", *cells, "tuned_heuristic", "kademlia_epoch",
+                                "never_replace"}
+    cell_rows = ps[ps["group"].isin(cells)]
+    assert (cell_rows["J"] - cell_rows["ledger_score"]).abs().max() <= 1e-12   # canonical scoring
+    assert (cell_rows["J_train"] - cell_rows["J"]).abs().min() > 1e-9          # cell weights differ
+    refs = ps[~ps["group"].isin(cells)]
+    assert (refs["J_train"] == refs["J"]).all()
+    assert set(ps.loc[ps["group"] == "canonical", "cell"]) == {"wL0.3_wM0.1"}
+    # reused reference rows are identical to the agent suite's rows
+    ag = pd.read_csv(out / "agent" / "per_seed.csv").set_index(["policy", "scenario", "episode"])
+    for _, r in refs.iterrows():
+        assert ag.loc[(r["policy"], r["scenario"], r["episode"]), "trace_hash"] == r["trace_hash"]
+    comp = pd.read_csv(d / "comparison.csv")
+    assert len(comp[comp["comparison"] == "vs_canonical"]) == 2 * 3 * 4
+    assert len(comp[comp["comparison"] == "vs_tuned_heuristic"]) == 3 * 3 * 2
+    tr = pd.read_csv(d / "trend.csv")
+    assert list(tr["n_points"]) == [2, 2, 2]                    # canonical + wL1.0 on the line
+    assert json.loads(tr["w_L_values"].iloc[0]) == [0.3, 1.0]
+    # refuses to overwrite without the flag
+    with pytest.raises(ValueError, match="overwrite"):
+        run_reward_suite(CONFIGS, manifest, out, cells=cells, **common)
+    # forced re-run of the references reproduces the reused rows
+    rep2 = run_reward_suite(CONFIGS, manifest, out, cells=cells[:1], overwrite=True,
+                            reuse_references=False, **common)
+    assert rep2.manifest["references"]["reused"] is False
+    a = rep.per_seed[~rep.per_seed["group"].isin(cells)].set_index(["policy", "scenario", "episode"])
+    b = rep2.per_seed[~rep2.per_seed["group"].isin(cells)].set_index(["policy", "scenario", "episode"])
+    assert set(a.index) == set(b.index)
+    for k in ("trace_hash", "summary_hash"):
+        assert (a[k] == b.loc[a.index, k]).all()
+    m2 = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert m2["suites"]["agent"] == agent_before["suites"]["agent"]
+
+
+@pytest.mark.parametrize("bad", ["results/eval", "results/headroom", "results/reproduce_quick"])
+def test_reward_suite_refuses_canonical_out(bad, short_exp, manifest, monkeypatch):
+    monkeypatch.chdir(REPO)
+    with pytest.raises(ValueError):
+        run_reward_suite(CONFIGS, manifest, bad, experiment_path=short_exp, episodes=2)
+
+
+def test_reward_suite_rejects_unknown_or_canonical_cell(tmp_path, short_exp, manifest):
+    for bad in (["wL0.3_wM0.1"], ["nope"], []):
+        with pytest.raises(ValueError, match="cell"):
+            run_reward_suite(CONFIGS, manifest, tmp_path / "x", cells=bad,
+                             experiment_path=short_exp, episodes=2)

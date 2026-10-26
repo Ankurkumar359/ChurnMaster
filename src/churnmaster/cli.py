@@ -2,7 +2,7 @@
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
 tune, evaluate, reproduce (``--quick``, ``--full`` or ``--figures-only``),
-ablate (exploratory ablations, ``--suite agent``).
+ablate (exploratory ablations, ``--suite agent`` or ``--suite reward``).
 """
 
 from __future__ import annotations
@@ -654,11 +654,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ablate", help="exploratory ablations on TEST seeds (separate from the "
                                       "locked evaluation)")
     _add_config_args(p, scenario=False)
-    p.add_argument("--suite", choices=("agent",), default="agent",
+    p.add_argument("--suite", choices=("agent", "reward"), default="agent",
                    help="ablation suite (default agent: gamma0, no_probe, shuffled_reward, "
-                        "buffered_control, drop_<feature>)")
+                        "buffered_control, drop_<feature>; reward: w_M x w_L sweep scored "
+                        "under the canonical weights)")
     p.add_argument("--variants", default=None,
-                   help="comma-separated subset of the suite's variants (default: all)")
+                   help="comma-separated subset of the suite's variants / reward cells "
+                        "(default: all)")
     p.add_argument("--episodes", type=int, default=None,
                    help="override training episodes (default 200; shortened runs skip the "
                         "canonical-settings check)")
@@ -684,7 +686,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def cmd_ablate(args: argparse.Namespace) -> int:
     """Exploratory ablations (Requirement 28.1). Exit 0 ok, 1 on usage / input errors."""
-    from churnmaster.experiments.ablations import AblationSeedError, run_agent_suite
+    from churnmaster.experiments.ablations import (AblationSeedError, run_agent_suite,
+                                                   run_reward_suite)
     from churnmaster.experiments.runner import FrozenEnvError, default_workers
 
     def fail(msg: str) -> int:
@@ -697,14 +700,23 @@ def cmd_ablate(args: argparse.Namespace) -> int:
     variants = [v.strip() for v in args.variants.split(",") if v.strip()] if args.variants else None
     root = _configs_root(args)
     exp = _experiment_path(args) or root / "experiments" / "train.toml"
+    kw = dict(experiment_path=exp, episodes=args.episodes, n_seeds=args.seeds,
+              canonical_q=args.rl_q, tune_selected=args.tune_selected, workers=workers,
+              overwrite=args.overwrite, log_every=args.log_every,
+              progress=lambda m: print(m, flush=True))
     try:
-        rep = run_agent_suite(root, Path(args.manifest), Path(args.out), experiment_path=exp,
-                              variants=variants, episodes=args.episodes, n_seeds=args.seeds,
-                              canonical_q=args.rl_q, tune_selected=args.tune_selected,
-                              workers=workers, overwrite=args.overwrite,
-                              log_every=args.log_every, progress=lambda m: print(m, flush=True))
+        if args.suite == "reward":
+            rep = run_reward_suite(root, Path(args.manifest), Path(args.out), cells=variants, **kw)
+        else:
+            rep = run_agent_suite(root, Path(args.manifest), Path(args.out), variants=variants,
+                                  **kw)
     except (FrozenEnvError, AblationSeedError, ValueError, FileNotFoundError) as e:
         return fail(str(e))
+    if args.suite == "reward":
+        _print_reward_table(rep)
+        print(f"ablate[{rep.suite}]: wall={rep.wall_s:.1f}s (train {rep.train_wall_s:.1f}s, "
+              f"eval {rep.eval_wall_s:.1f}s); wrote {len(rep.files)} files to {rep.out_dir}")
+        return 0
     c = rep.comparison
     print("exploratory; p uncorrected. dX = rl_mean(variant) - reference, paired over TEST seeds")
     for _, r in c[c["metric"] == "J"].iterrows():
@@ -714,6 +726,33 @@ def cmd_ablate(args: argparse.Namespace) -> int:
     print(f"ablate[{rep.suite}]: wall={rep.wall_s:.1f}s (train {rep.train_wall_s:.1f}s, eval "
           f"{rep.eval_wall_s:.1f}s); wrote {len(rep.files)} files to {rep.out_dir}")
     return 0
+
+
+def _print_reward_table(rep) -> None:
+    """Per cell x scenario: RL p95, Δp95 / ΔJ vs canonical [CI], gaps to tuned_heuristic."""
+    c, s = rep.comparison, rep.summary
+    print("exploratory; p uncorrected; J under the canonical weights; "
+          "d = rl_mean(cell) - reference, paired over TEST seeds")
+
+    def get(comp: str, cell: str, scn: str, m: str):
+        r = c[(c["comparison"] == comp) & (c["variant"] == cell) & (c["scenario"] == scn)
+              & (c["metric"] == m)]
+        return None if r.empty else r.iloc[0]
+
+    for _, row in s[s["kind"] == "rl_mean"].iterrows():
+        g, scn = row["group"], row["scenario"]
+        dp, dj = get("vs_canonical", g, scn, "p95_latency_all_ms"), get("vs_canonical", g, scn, "J")
+        gj, gp = (get("vs_tuned_heuristic", g, scn, "J"),
+                  get("vs_tuned_heuristic", g, scn, "p95_latency_all_ms"))
+        fmt = (lambda r, d: "-" if r is None else
+               f"{r['mean_diff']:+.{d}f} [{r['ci_lo']:+.{d}f}, {r['ci_hi']:+.{d}f}]")
+        print(f"  {row['cell']:<13} {scn:<15} p95={row['p95_latency_all_ms_mean']:7.1f} "
+              f"dp95={fmt(dp, 1)} dJ={fmt(dj, 4)} gapJ={fmt(gj, 4)} gapP95={fmt(gp, 1)} "
+              f"pings/h={row['pings_per_hour_mean']:.1f}")
+    if rep.trend is not None:
+        for _, t in rep.trend.iterrows():
+            print(f"  trend {t['scenario']:<15} rho(w_L, p95) = {t['spearman_rho']:+.2f} "
+                  f"(n={t['n_points']}, descriptive)")
 
 
 def _reproduce_pipeline(args: argparse.Namespace, mode: str) -> int:

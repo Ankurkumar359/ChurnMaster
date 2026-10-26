@@ -300,7 +300,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
   - [x]* 12.1 Implement agent ablations in `experiments/ablations.py`
     - γ=0, no PROBE (masked), shuffled reward, feature drop-one (discretizer wrapper)
     - _Requirements: 28.1_
-  - [ ]* 12.2 Implement reward-weight sweep
+  - [x]* 12.2 Implement reward-weight sweep
     - w_M {0.05, 0.2, 0.5} × w_L {0.1, 0.3, 0.6} in `experiments/ablations.py`
     - _Requirements: 28.2_
   - [ ]* 12.3 Implement memoryless held-out scenario

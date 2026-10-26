@@ -697,3 +697,102 @@ def plot_ablation_forest(comparison, metrics: Sequence[str], path: PathLike,
         fig.suptitle(title, fontsize=9)
     fig.tight_layout()
     return _save(fig, path)
+
+
+__all__ += ["plot_reward_sweep", "plot_reward_tradeoff"]
+
+
+def _sweep_parts(summary):
+    """(scenarios, cell rl_mean rows, reference rows) of a reward-sweep ``summary.csv``."""
+    scenarios = list(dict.fromkeys(summary["scenario"]))
+    cells = summary[summary["kind"] == "rl_mean"]
+    refs = summary[summary["kind"] == "reference"]
+    if cells.empty:
+        raise ValueError("reward-sweep summary has no rl_mean rows")
+    return scenarios, cells, refs
+
+
+def _hw(std: float, n: int) -> float:
+    return 1.96 * float(std) / np.sqrt(n) if n > 1 and np.isfinite(std) else 0.0
+
+
+def plot_reward_sweep(summary, metric: str, path: PathLike,
+                      references: Sequence[str] = ("tuned_heuristic", "kademlia_epoch"),
+                      ylabel: str | None = None, title: str | None = None) -> Path:
+    """RL ``metric`` vs w_L, one line per w_M, one panel per scenario.
+
+    ``summary`` is the reward suite's ``summary.csv`` (``kind``, ``w_L``,
+    ``w_M``, ``<metric>_mean``, ``<metric>_std``, ``n``). Error bars are
+    ±1.96·std/√n over seeds; ``references`` are drawn as horizontal lines.
+    """
+    scenarios, cells, refs = _sweep_parts(summary)
+    fig = Figure(figsize=(4.8 * len(scenarios) + 0.6, 4.4), layout="constrained")
+    axes = fig.subplots(1, len(scenarios), squeeze=False)[0]
+    wms = sorted(set(cells["w_M"].astype(float)))
+    for ax, s in zip(axes, scenarios):
+        cs = cells[cells["scenario"] == s]
+        for i, wm in enumerate(wms):
+            pts = cs[np.isclose(cs["w_M"].astype(float), wm)].sort_values("w_L")
+            if pts.empty:
+                continue
+            yerr = [_hw(sd, n) for sd, n in zip(pts[f"{metric}_std"], pts["n"])]
+            ax.errorbar(pts["w_L"].astype(float), pts[f"{metric}_mean"].astype(float),
+                        yerr=yerr, fmt="-o", ms=4, capsize=3, lw=1.2,
+                        color=PALETTE[i % len(PALETTE)], label=f"RL, w_M={wm:g}")
+        for j, ref in enumerate(references):
+            rr = refs[(refs["policy"] == ref) & (refs["scenario"] == s)]
+            if rr.empty:
+                continue
+            ax.axhline(float(rr[f"{metric}_mean"].iloc[0]), color=("0.15", "0.55")[j % 2],
+                       ls=("--", ":")[j % 2], lw=1.2, label=ref)
+        ax.set_xlabel("Latency weight w_L (training reward)")
+        ax.set_ylabel(ylabel or metric)
+        ax.set_title(s)
+        ax.grid(True, alpha=0.3)
+    h, lab = axes[0].get_legend_handles_labels()
+    fig.legend(h, lab, loc="outside lower center", ncol=len(lab), fontsize="small")
+    if title:
+        fig.suptitle(title, fontsize=10)
+    return _save(fig, path)
+
+
+def plot_reward_tradeoff(summary, path: PathLike,
+                         references: Sequence[str] = ("tuned_heuristic", "kademlia_epoch",
+                                                      "never_replace"),
+                         title: str | None = None) -> Path:
+    """p95 (all lookups) vs pings/h for every cell (RL mean) and the references."""
+    scenarios, cells, refs = _sweep_parts(summary)
+    fig = Figure(figsize=(4.8 * len(scenarios) + 0.6, 4.6), layout="constrained")
+    axes = fig.subplots(1, len(scenarios), squeeze=False)[0]
+    wms = sorted(set(cells["w_M"].astype(float)))
+    markers = ("s", "^", "D", "v", "P")
+    for ax, s in zip(axes, scenarios):
+        cs = cells[cells["scenario"] == s]
+        for i, wm in enumerate(wms):
+            pts = cs[np.isclose(cs["w_M"].astype(float), wm)]
+            if pts.empty:
+                continue
+            ax.scatter(pts["pings_per_hour_mean"].astype(float),
+                       pts["p95_latency_all_ms_mean"].astype(float), s=36,
+                       color=PALETTE[i % len(PALETTE)], label=f"RL, w_M={wm:g}", zorder=3)
+            for _, r in pts.iterrows():
+                ax.annotate(f"{float(r['w_L']):g}", (float(r["pings_per_hour_mean"]),
+                                                     float(r["p95_latency_all_ms_mean"])),
+                            textcoords="offset points", xytext=(4, 3), fontsize=7)
+        for j, ref in enumerate(references):
+            rr = refs[(refs["policy"] == ref) & (refs["scenario"] == s)]
+            if rr.empty:
+                continue
+            ax.scatter(rr["pings_per_hour_mean"].astype(float),
+                       rr["p95_latency_all_ms_mean"].astype(float), s=70,
+                       marker=markers[j % len(markers)], facecolors="none", edgecolors="black",
+                       linewidth=1.3, label=ref, zorder=4)
+        ax.set_xlabel("Maintenance pings per hour")
+        ax.set_ylabel("p95 latency, all lookups (ms)")
+        ax.set_title(f"{s} (labels: w_L)")
+        ax.grid(True, alpha=0.3)
+    h, lab = axes[0].get_legend_handles_labels()
+    fig.legend(h, lab, loc="outside lower center", ncol=len(lab), fontsize="small")
+    if title:
+        fig.suptitle(title, fontsize=10)
+    return _save(fig, path)
