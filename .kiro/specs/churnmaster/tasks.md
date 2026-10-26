@@ -277,15 +277,15 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - **Property 30: Holm correction monotonicity**
     - **Validates: Requirements 25.5**
 
-- [ ] 10. Report and reproducibility (MVP complete)
+- [x] 10. Report and reproducibility (MVP complete)
   - [x] 10.1 Implement `experiments/reproduce.py` and `reproduce` command
     - `--quick` (1 run, 40 episodes, 5 eval seeds, <10 min) and `--full` (headroom → diagnostics → train → tune → evaluate → stats → plots); manifest with git hash, config hashes, package versions; learning-curve and comparison figures in `plots.py`
     - `tests/test_reproduce.py` (`slow`): quick mode writes manifest, tables, and figures
     - _Requirements: 26.2, 26.3, 26.4_
-  - [ ] 10.2 Write `README.md` and `docs/report.md`
+  - [x] 10.2 Write `README.md` and `docs/report.md`
     - README: install, CLI usage, reproduce commands; report (4–6 pages): setup, POMDP framing, atomic-lookup limitation, results tables/figures from reproduce, H1–H5 outcomes including negative results
     - _Requirements: 26.6_
-  - [ ] 10.3 Final checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 10.3 Final checkpoint - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 11. Bursty extension (optional, post-MVP)
   - [ ]* 11.1 Implement bursty churn and regional RTT
