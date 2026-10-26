@@ -1,0 +1,1516 @@
+{
+  "analysis_plan": "Pre-registered analysis plan (fixed before any ablation result existed; the\nsame text, :data:`ANALYSIS_PLAN`, is stored in ``<out>/manifest.json``)\n--------------------------------------------------------------------------\n1. Scope. Ablations are exploratory and strictly separate from the locked\n   primary evaluation. They never use the EVAL split for episodes and never\n   read or write the eval lock. They never write into canonical results\n   directories (headroom, diagnostics, diagnostics_60, train, tune, matched,\n   eval, checkpoint_5_17, figures, reproduce_*); the frozen env manifest\n   (``results/headroom/manifest.json``) is only READ (``check_frozen``). All\n   outputs go to ``<out>/<suite>/`` and ``<out>/manifest.json`` (default\n   ``<out> = results/ablations``).\n2. Evaluation seeds. Split TEST, run 0, episodes 0..19, scenarios stable,\n   high_churn, heldout_medium, full-length episodes. Before anything runs,\n   the ``seed_state`` fingerprints of these seeds are checked to be disjoint\n   from calibration (run 0, ep 0..19), train (runs 0..2, ep 0..199), tuning\n   (TRAIN run 1000, ep 0..9), validation (run 0, ep 0..4) and eval (ep 0..19)\n   seeds; the run aborts otherwise (:class:`AblationSeedError`).\n3. Reference (\"canonical RL\"). The 3 canonical final Q-tables\n   ``results/train/final/run{0,1,2}/q_final.npy`` (\u03b3=0.8, \u03b1_min=0.02),\n   re-evaluated greedily on the same TEST seeds. Context policies on the same\n   seeds: tuned_heuristic (global selection of ``results/tune/selected.json``),\n   kademlia_epoch, never_replace.\n4. Variants. Each variant trains 3 independent runs (runs 0, 1, 2: the same\n   agent exploration streams and the same TRAIN env seeds as canonical, so the\n   only difference is the ablated component): 200 episodes alternating\n   stable / high_churn, \u03b3=0.8, \u03b1_min=0.02, all other agent settings and the\n   reward weights (w_L 0.3, w_M 0.1, w_R 0.15) canonical; no grid search, no\n   validation checkpoints. The final greedy policies are evaluated on the\n   TEST seeds.\n\n   * ``gamma0``: \u03b3=0.\n   * ``no_probe``: PROBE masked out in training and evaluation (allowed: KEEP,\n     REPLACE iff a candidate exists) via the agent's action mask; updates\n     bootstrap over the masked next-state actions. ``rl/state.py`` unchanged.\n   * ``shuffled_reward``: transitions of each training episode are buffered;\n     at episode end their rewards are randomly permuted across the episode's\n     transitions and the Q updates are applied in emission order. The\n     permutation generator is ``SeedSequence(root, spawn_key=(AGENT, run, 0,\n     1))`` (the run's exploration seed extended by stream id 1; one generator\n     per run, consumed across its episodes).\n   * ``buffered_control``: the same buffering and episode-end updates, rewards\n     NOT permuted. shuffled_reward vs buffered_control isolates the reward\n     signal; buffered_control vs canonical isolates the update-timing change.\n   * ``drop_<feature>`` for tier, inc_fail, inc_stale, inc_age, cand_faster,\n     churn: a discretizer wrapper (``rl.variants.FeatureDrop``) collapses the\n     feature to the single bin 0. ``cand`` is special: collapsing it to NONE\n     would mask REPLACE everywhere, so ``drop_cand_freshness`` merges FRESH\n     and STALE into one \"present\" bin and keeps NONE (presence and masking\n     stay correct). cand_faster stays 0 whenever cand is NONE. The same\n     wrapper is used in training and evaluation (the env records the wrapped\n     state); the table shape stays 648 x 3.\n5. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected). Per variant and scenario: the paired per-seed difference\n   ``rl_mean(variant) \u2212 rl_mean(canonical)`` (``rl_mean`` = per-seed mean over\n   the 3 runs) on J, success_rate, p95_latency_all_ms and pings_per_hour, with\n   a paired bootstrap 95% CI (10 000 resamples, seed 0) and a two-sided\n   Wilcoxon signed-rank p; shuffled_reward vs buffered_control on the same\n   metrics; each variant (and canonical) vs tuned_heuristic on J; per-run\n   values of every variant. Functions: ``stats.average_over_runs``,\n   ``stats.paired_bootstrap_ci``, ``stats.wilcoxon_paired``.\n6. Also saved per variant: ``curves.csv`` and ``q_final.npy`` per run (with\n   the |\u0394Q| first/last-window trend) and greedy-policy statistics\n   (``train.greedy_stats``).",
+  "exploratory": true,
+  "extra_scenarios": {
+    "heldout_memoryless": {
+      "config_hash": "46b8a18bbe9991f942dd033e919657b52e4844fc6e659ca398a7dca5a1457b07",
+      "differs": {
+        "name": [
+          "heldout_medium",
+          "heldout_memoryless"
+        ],
+        "weibull_shape": [
+          0.6,
+          1.0
+        ]
+      },
+      "env_hash": "7bb92a79bc4820b9519e32c2db5ceb07216e1ce2d18a6c119ff60e086c5d4335",
+      "in_frozen_manifest": false,
+      "parent": "heldout_medium",
+      "toml": "E:/oss/AI2(course)/configs/ablations/heldout_memoryless.toml",
+      "toml_sha256": "70c4c368dbae8e1b05e7970fae1f972e7bbb147cce33813fd8cb5bbe0fb26568"
+    }
+  },
+  "kind": "churnmaster-ablations",
+  "memoryless_analysis_plan": "Memoryless held-out scenario: pre-registered analysis plan (fixed before any\nmemoryless result existed; the same text, :data:`MEMORYLESS_ANALYSIS_PLAN`,\nis stored in ``<out>/manifest.json`` under ``suites.memoryless``)\n--------------------------------------------------------------------------\n1. Question. Every frozen scenario draws sessions from a Weibull with shape\n   0.6 (decreasing hazard: a contact that has been online long is likely to\n   stay online, which the inc_age feature and the heuristics can exploit).\n   Does the canonical RL policy's standing relative to the baselines change\n   when sessions are memoryless (exponential, shape 1.0), i.e. when a\n   contact's age carries no information about its remaining lifetime?\n2. Scenario. ``heldout_memoryless`` = ``heldout_medium`` with\n   ``weibull_shape = 1.0``. The churn model sets the Weibull scale to\n   mean / Gamma(1 + 1/shape), so the mean session lengths, the online\n   fraction and the mean churn rate are unchanged; only the hazard shape\n   changes. The scenario is NOT in the frozen manifest. Its env must differ\n   from the frozen heldout_medium env only in ``scenario.name`` and\n   ``scenario.weibull_shape``: substituting heldout_medium's values for those\n   two fields must give exactly the frozen heldout_medium env hash\n   (:func:`check_derived_scenario`; abort otherwise). Its env hash, config\n   hash and TOML sha256 are recorded in ``<out>/manifest.json``\n   (``suites.memoryless.scenario`` and ``extra_scenarios``); the frozen\n   manifest is only read.\n3. Seeds. TEST split, run 0, episodes 0..19 (the agent-suite seeds,\n   ``check_test_seeds_disjoint``), on heldout_memoryless AND on\n   heldout_medium (the paired shape-0.6 reference: same seeds, same\n   policies), full-length episodes.\n4. Policies. Canonical RL (the 3 final Q-tables, greedy; ``rl_mean`` =\n   per-seed mean over the 3 runs), tuned_heuristic (global selection of\n   ``results/tune/selected.json``), kademlia_epoch, matched_random,\n   never_replace, uniform_random and oracle_heuristic (ground-truth\n   reference, not a competitor). No retraining and no re-tuning on the new\n   scenario. matched_random frequencies for heldout_memoryless are measured\n   as in task 9.2: the canonical Q-tables run greedily on VALIDATION run 0,\n   episodes 0..4 of heldout_memoryless, decisions pooled; heldout_medium uses\n   ``results/matched/freqs.json`` (read-only) when its env hash matches,\n   else it is measured the same way.\n5. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected; paired bootstrap 95% CI, 10 000 resamples, seed 0; two-sided\n   Wilcoxon signed-rank p).\n   (a) ``rl_vs_reference``: per scenario, rl_mean \u2212 reference on J,\n       success_rate, p95_latency_all_ms and pings_per_hour.\n   (b) ``shape_effect``: per policy (and rl_mean), metric(heldout_memoryless)\n       \u2212 metric(heldout_medium), paired by TEST episode (same env seed; the\n       churn draws differ), same metrics.\n   (c) ``gap_shift``: [rl_mean \u2212 ref]_memoryless \u2212 [rl_mean \u2212 ref]_medium on\n       J and p95_latency_all_ms, ref in tuned_heuristic, kademlia_epoch,\n       matched_random, paired by episode.\n   Cross-check (recorded, not a gate): heldout_medium rows of labels also in\n   ``<out>/agent/per_seed.csv`` must reproduce its trace / summary hashes.\n6. Caveat. One scenario, 20 seeds, no correction: descriptive evidence about\n   the hazard shape only.",
+  "reward_analysis_plan": "Reward-weight sweep: pre-registered analysis plan (fixed before any sweep\nresult existed; the same text, :data:`REWARD_ANALYSIS_PLAN`, is stored in\n``<out>/manifest.json`` under ``suites.reward``)\n--------------------------------------------------------------------------\n1. Question. The report hypothesizes that RL trails the tuned heuristic\n   partly because the latency weight w_L=0.3 is too light (RL p95 is 18-38%\n   above the best baseline). The sweep tests whether a higher w_L lowers RL's\n   p95 and narrows the gap.\n2. Cells. The task grid w_M in {0.05, 0.2, 0.5} x w_L in {0.1, 0.3, 0.6}\n   (9 cells), plus a w_L line at the canonical w_M=0.1: w_L in {0.1, 0.6,\n   1.0} (3 cells). Together 12 trained cells. The point w_L=0.3, w_M=0.1 is\n   canonical and reuses the 3 canonical Q-tables (no retraining). In every\n   cell w_R = 1.5 * w_M (the canonical ratio 0.15 / 0.1). Cell names\n   ``wL<w_L>_wM<w_M>``, e.g. ``wL0.6_wM0.2``.\n3. Training. As in the agent suite: 3 runs (runs 0..2), gamma=0.8,\n   alpha_min=0.02, 200 episodes alternating stable / high_churn, the same\n   TRAIN seeds and agent exploration streams; only the reward weights used\n   by the Ledger during training change. Reward is not part of\n   env_config_hash, so the frozen env is unaffected (``check_frozen`` is\n   still called for every cell config).\n4. Evaluation. TEST split, run 0, episodes 0..19 x {stable, high_churn,\n   heldout_medium} (the agent-suite seeds; ``check_test_seeds_disjoint``).\n   Every policy is SCORED UNDER THE CANONICAL WEIGHTS (w_L 0.3, w_M 0.1,\n   w_R 0.15), so J is comparable to the primary study. Additionally\n   ``J_train`` = J under the cell's own training weights, recomputed from the\n   per-lookup / per-decision records with ``rl.reward.lookup_loss`` /\n   ``action_cost``; the same recomputation at the canonical weights is checked\n   to equal the ledger J for every episode. Raw metrics: success_rate,\n   p95_latency_all_ms, mean_latency_ms, pings_per_hour, evictions_per_hour.\n5. References on the same TEST seeds: canonical RL (3 Q-tables),\n   tuned_heuristic, kademlia_epoch, never_replace. Their rows are reused from\n   ``<out>/agent/per_seed.csv`` when the labels / seeds / config hashes /\n   canonical Q-table hashes match and a re-run of the first TEST episode of\n   every reference x scenario reproduces the stored trace and summary hashes;\n   otherwise they are re-run.\n6. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected). Per cell x scenario: the paired per-seed difference\n   ``rl_mean(cell) - rl_mean(canonical)`` on canonical-weight J,\n   p95_latency_all_ms, pings_per_hour and success_rate (paired bootstrap 95%\n   CI, 10 000 resamples, seed 0; two-sided Wilcoxon signed-rank p);\n   ``rl_mean(cell) - tuned_heuristic`` on canonical-weight J and on\n   p95_latency_all_ms (the \"gap\" quantities); per-run values. Monotonic-trend\n   summary: Spearman rho between w_L and the RL mean p95 across the w_L line\n   at w_M=0.1 (w_L 0.1, 0.3, 0.6, 1.0), per scenario -- n=4 points,\n   descriptive only.\n7. Caveat. The tuned heuristic was tuned under the canonical weights; a\n   heuristic re-tuned for other weights is not part of this sweep.",
+  "suites": {
+    "agent": {
+      "analysis_plan": "Pre-registered analysis plan (fixed before any ablation result existed; the\nsame text, :data:`ANALYSIS_PLAN`, is stored in ``<out>/manifest.json``)\n--------------------------------------------------------------------------\n1. Scope. Ablations are exploratory and strictly separate from the locked\n   primary evaluation. They never use the EVAL split for episodes and never\n   read or write the eval lock. They never write into canonical results\n   directories (headroom, diagnostics, diagnostics_60, train, tune, matched,\n   eval, checkpoint_5_17, figures, reproduce_*); the frozen env manifest\n   (``results/headroom/manifest.json``) is only READ (``check_frozen``). All\n   outputs go to ``<out>/<suite>/`` and ``<out>/manifest.json`` (default\n   ``<out> = results/ablations``).\n2. Evaluation seeds. Split TEST, run 0, episodes 0..19, scenarios stable,\n   high_churn, heldout_medium, full-length episodes. Before anything runs,\n   the ``seed_state`` fingerprints of these seeds are checked to be disjoint\n   from calibration (run 0, ep 0..19), train (runs 0..2, ep 0..199), tuning\n   (TRAIN run 1000, ep 0..9), validation (run 0, ep 0..4) and eval (ep 0..19)\n   seeds; the run aborts otherwise (:class:`AblationSeedError`).\n3. Reference (\"canonical RL\"). The 3 canonical final Q-tables\n   ``results/train/final/run{0,1,2}/q_final.npy`` (\u03b3=0.8, \u03b1_min=0.02),\n   re-evaluated greedily on the same TEST seeds. Context policies on the same\n   seeds: tuned_heuristic (global selection of ``results/tune/selected.json``),\n   kademlia_epoch, never_replace.\n4. Variants. Each variant trains 3 independent runs (runs 0, 1, 2: the same\n   agent exploration streams and the same TRAIN env seeds as canonical, so the\n   only difference is the ablated component): 200 episodes alternating\n   stable / high_churn, \u03b3=0.8, \u03b1_min=0.02, all other agent settings and the\n   reward weights (w_L 0.3, w_M 0.1, w_R 0.15) canonical; no grid search, no\n   validation checkpoints. The final greedy policies are evaluated on the\n   TEST seeds.\n\n   * ``gamma0``: \u03b3=0.\n   * ``no_probe``: PROBE masked out in training and evaluation (allowed: KEEP,\n     REPLACE iff a candidate exists) via the agent's action mask; updates\n     bootstrap over the masked next-state actions. ``rl/state.py`` unchanged.\n   * ``shuffled_reward``: transitions of each training episode are buffered;\n     at episode end their rewards are randomly permuted across the episode's\n     transitions and the Q updates are applied in emission order. The\n     permutation generator is ``SeedSequence(root, spawn_key=(AGENT, run, 0,\n     1))`` (the run's exploration seed extended by stream id 1; one generator\n     per run, consumed across its episodes).\n   * ``buffered_control``: the same buffering and episode-end updates, rewards\n     NOT permuted. shuffled_reward vs buffered_control isolates the reward\n     signal; buffered_control vs canonical isolates the update-timing change.\n   * ``drop_<feature>`` for tier, inc_fail, inc_stale, inc_age, cand_faster,\n     churn: a discretizer wrapper (``rl.variants.FeatureDrop``) collapses the\n     feature to the single bin 0. ``cand`` is special: collapsing it to NONE\n     would mask REPLACE everywhere, so ``drop_cand_freshness`` merges FRESH\n     and STALE into one \"present\" bin and keeps NONE (presence and masking\n     stay correct). cand_faster stays 0 whenever cand is NONE. The same\n     wrapper is used in training and evaluation (the env records the wrapped\n     state); the table shape stays 648 x 3.\n5. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected). Per variant and scenario: the paired per-seed difference\n   ``rl_mean(variant) \u2212 rl_mean(canonical)`` (``rl_mean`` = per-seed mean over\n   the 3 runs) on J, success_rate, p95_latency_all_ms and pings_per_hour, with\n   a paired bootstrap 95% CI (10 000 resamples, seed 0) and a two-sided\n   Wilcoxon signed-rank p; shuffled_reward vs buffered_control on the same\n   metrics; each variant (and canonical) vs tuned_heuristic on J; per-run\n   values of every variant. Functions: ``stats.average_over_runs``,\n   ``stats.paired_bootstrap_ci``, ``stats.wilcoxon_paired``.\n6. Also saved per variant: ``curves.csv`` and ``q_final.npy`` per run (with\n   the |\u0394Q| first/last-window trend) and greedy-policy statistics\n   (``train.greedy_stats``).",
+      "canonical": {
+        "q_tables": [
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run0\\q_final.npy",
+            "sha256": "6d3133edcecff07f1d3c95715dfc4d5d1bf65a42ed3c77a7e3285a77af6ee95b"
+          },
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run1\\q_final.npy",
+            "sha256": "927ba79fce5e8d193d12eb097eeccf5c96ce0f0e6110264839080b737b9c1436"
+          },
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run2\\q_final.npy",
+            "sha256": "df526dc82960b0a5d3bd09daae564358d037788e9ecd90c023ccfe7d170f9144"
+          }
+        ],
+        "settings_match": true,
+        "train_manifest": "E:\\oss\\AI2(course)\\results\\train\\final\\train_manifest.json"
+      },
+      "config_hashes": {
+        "heldout_medium": "e39717f39c99e773387d5a05e2b6a6b4cbfe65a998fda80a28d11da7c5e4d097",
+        "high_churn": "ba3e9d11116c9a08427a17d999bb7da1009af32f3489e3fe15c1055108a95ff6",
+        "stable": "a38595e561d5ea82ec6de66a25405ce410e3209e12a475dbacc340ae9e5cc2a4"
+      },
+      "context_policies": {
+        "kademlia_epoch": "kademlia_epoch",
+        "never_replace": "never_replace",
+        "tuned_heuristic": "heuristic:f=2,po=0,rs=1,ps=0,tg=all"
+      },
+      "created_utc": "2026-10-26T01:08:17+00:00",
+      "env_hashes": {
+        "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+        "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+        "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+      },
+      "eval_scenarios": [
+        "stable",
+        "high_churn",
+        "heldout_medium"
+      ],
+      "eval_seeds": {
+        "checked_against": [
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "calibration",
+            "runs": [
+              0
+            ],
+            "split": "calibration"
+          },
+          {
+            "episodes": [
+              0,
+              199
+            ],
+            "name": "train",
+            "runs": [
+              0,
+              1,
+              2
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              9
+            ],
+            "name": "tuning",
+            "runs": [
+              1000
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              4
+            ],
+            "name": "validation",
+            "runs": [
+              0
+            ],
+            "split": "validation"
+          },
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "eval",
+            "runs": [
+              0
+            ],
+            "split": "eval"
+          }
+        ],
+        "episodes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "n_other_seed_states": 655,
+        "overlap": false,
+        "run": 0,
+        "split": "test"
+      },
+      "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\train.toml",
+      "exploratory": true,
+      "frozen_manifest": {
+        "access": "read-only (check_frozen)",
+        "path": "results\\headroom\\manifest.json",
+        "sha256": "969745797e8cd4af5d4c9889112adf0fe25f052865d0310dc4a16f34ec0db67d"
+      },
+      "git_hash": "04bafc50403a773d182b602b3b2ba85964f28172",
+      "multiple_comparison_correction": "none (exploratory; p-values uncorrected)",
+      "n_eval_jobs": 2340,
+      "n_train_runs": 33,
+      "outputs": [
+        "agent\\comparison.csv",
+        "agent\\greedy_stats.json",
+        "agent\\per_run.csv",
+        "agent\\per_seed.csv",
+        "agent\\summary.csv",
+        "agent\\variants\\buffered_control\\run0\\curves.csv",
+        "agent\\variants\\buffered_control\\run0\\q_final.npy",
+        "agent\\variants\\buffered_control\\run1\\curves.csv",
+        "agent\\variants\\buffered_control\\run1\\q_final.npy",
+        "agent\\variants\\buffered_control\\run2\\curves.csv",
+        "agent\\variants\\buffered_control\\run2\\q_final.npy",
+        "agent\\variants\\drop_cand_faster\\run0\\curves.csv",
+        "agent\\variants\\drop_cand_faster\\run0\\q_final.npy",
+        "agent\\variants\\drop_cand_faster\\run1\\curves.csv",
+        "agent\\variants\\drop_cand_faster\\run1\\q_final.npy",
+        "agent\\variants\\drop_cand_faster\\run2\\curves.csv",
+        "agent\\variants\\drop_cand_faster\\run2\\q_final.npy",
+        "agent\\variants\\drop_cand_freshness\\run0\\curves.csv",
+        "agent\\variants\\drop_cand_freshness\\run0\\q_final.npy",
+        "agent\\variants\\drop_cand_freshness\\run1\\curves.csv",
+        "agent\\variants\\drop_cand_freshness\\run1\\q_final.npy",
+        "agent\\variants\\drop_cand_freshness\\run2\\curves.csv",
+        "agent\\variants\\drop_cand_freshness\\run2\\q_final.npy",
+        "agent\\variants\\drop_churn\\run0\\curves.csv",
+        "agent\\variants\\drop_churn\\run0\\q_final.npy",
+        "agent\\variants\\drop_churn\\run1\\curves.csv",
+        "agent\\variants\\drop_churn\\run1\\q_final.npy",
+        "agent\\variants\\drop_churn\\run2\\curves.csv",
+        "agent\\variants\\drop_churn\\run2\\q_final.npy",
+        "agent\\variants\\drop_inc_age\\run0\\curves.csv",
+        "agent\\variants\\drop_inc_age\\run0\\q_final.npy",
+        "agent\\variants\\drop_inc_age\\run1\\curves.csv",
+        "agent\\variants\\drop_inc_age\\run1\\q_final.npy",
+        "agent\\variants\\drop_inc_age\\run2\\curves.csv",
+        "agent\\variants\\drop_inc_age\\run2\\q_final.npy",
+        "agent\\variants\\drop_inc_fail\\run0\\curves.csv",
+        "agent\\variants\\drop_inc_fail\\run0\\q_final.npy",
+        "agent\\variants\\drop_inc_fail\\run1\\curves.csv",
+        "agent\\variants\\drop_inc_fail\\run1\\q_final.npy",
+        "agent\\variants\\drop_inc_fail\\run2\\curves.csv",
+        "agent\\variants\\drop_inc_fail\\run2\\q_final.npy",
+        "agent\\variants\\drop_inc_stale\\run0\\curves.csv",
+        "agent\\variants\\drop_inc_stale\\run0\\q_final.npy",
+        "agent\\variants\\drop_inc_stale\\run1\\curves.csv",
+        "agent\\variants\\drop_inc_stale\\run1\\q_final.npy",
+        "agent\\variants\\drop_inc_stale\\run2\\curves.csv",
+        "agent\\variants\\drop_inc_stale\\run2\\q_final.npy",
+        "agent\\variants\\drop_tier\\run0\\curves.csv",
+        "agent\\variants\\drop_tier\\run0\\q_final.npy",
+        "agent\\variants\\drop_tier\\run1\\curves.csv",
+        "agent\\variants\\drop_tier\\run1\\q_final.npy",
+        "agent\\variants\\drop_tier\\run2\\curves.csv",
+        "agent\\variants\\drop_tier\\run2\\q_final.npy",
+        "agent\\variants\\gamma0\\run0\\curves.csv",
+        "agent\\variants\\gamma0\\run0\\q_final.npy",
+        "agent\\variants\\gamma0\\run1\\curves.csv",
+        "agent\\variants\\gamma0\\run1\\q_final.npy",
+        "agent\\variants\\gamma0\\run2\\curves.csv",
+        "agent\\variants\\gamma0\\run2\\q_final.npy",
+        "agent\\variants\\no_probe\\run0\\curves.csv",
+        "agent\\variants\\no_probe\\run0\\q_final.npy",
+        "agent\\variants\\no_probe\\run1\\curves.csv",
+        "agent\\variants\\no_probe\\run1\\q_final.npy",
+        "agent\\variants\\no_probe\\run2\\curves.csv",
+        "agent\\variants\\no_probe\\run2\\q_final.npy",
+        "agent\\variants\\shuffled_reward\\run0\\curves.csv",
+        "agent\\variants\\shuffled_reward\\run0\\q_final.npy",
+        "agent\\variants\\shuffled_reward\\run1\\curves.csv",
+        "agent\\variants\\shuffled_reward\\run1\\q_final.npy",
+        "agent\\variants\\shuffled_reward\\run2\\curves.csv",
+        "agent\\variants\\shuffled_reward\\run2\\q_final.npy",
+        "figures\\agent_ablation_J.png",
+        "figures\\agent_ablation_metrics.png"
+      ],
+      "packages": {
+        "churnmaster": "0.1.0",
+        "matplotlib": "3.9.2",
+        "numpy": "2.1.3",
+        "pandas": "2.2.3",
+        "python": "3.11.9",
+        "scipy": "1.14.1"
+      },
+      "per_seed_sha256": "d4fa8e77133f468b715e0010a4c826b5edbbda9d192419ac71a6fad7a241c3e3",
+      "reward": {
+        "w_L": 0.3,
+        "w_M": 0.1,
+        "w_R": 0.15
+      },
+      "root_seed": 20240601,
+      "runs": [
+        0,
+        1,
+        2
+      ],
+      "shuffle_stream": "SeedSequence(root, spawn_key=(AGENT, run, 0, 1))",
+      "stats": {
+        "bootstrap_resamples": 10000,
+        "bootstrap_seed": 0,
+        "ci_level": 0.95,
+        "pairing": [
+          "scenario",
+          "split",
+          "episode"
+        ],
+        "rl_mean": "per-seed mean over the runs of a group",
+        "wilcoxon": "two-sided, zero_method=wilcox"
+      },
+      "suite": "agent",
+      "timings_s": {
+        "eval": 278.6,
+        "per_train_run": {
+          "buffered_control:run0": 184.2,
+          "buffered_control:run1": 183.4,
+          "buffered_control:run2": 184.3,
+          "drop_cand_faster:run0": 188.0,
+          "drop_cand_faster:run1": 187.5,
+          "drop_cand_faster:run2": 188.0,
+          "drop_cand_freshness:run0": 188.6,
+          "drop_cand_freshness:run1": 187.5,
+          "drop_cand_freshness:run2": 188.9,
+          "drop_churn:run0": 188.4,
+          "drop_churn:run1": 187.2,
+          "drop_churn:run2": 164.2,
+          "drop_inc_age:run0": 189.1,
+          "drop_inc_age:run1": 188.4,
+          "drop_inc_age:run2": 189.9,
+          "drop_inc_fail:run0": 189.1,
+          "drop_inc_fail:run1": 188.9,
+          "drop_inc_fail:run2": 189.2,
+          "drop_inc_stale:run0": 189.5,
+          "drop_inc_stale:run1": 188.9,
+          "drop_inc_stale:run2": 189.7,
+          "drop_tier:run0": 189.0,
+          "drop_tier:run1": 187.6,
+          "drop_tier:run2": 189.0,
+          "gamma0:run0": 201.1,
+          "gamma0:run1": 200.7,
+          "gamma0:run2": 201.3,
+          "no_probe:run0": 202.4,
+          "no_probe:run1": 200.7,
+          "no_probe:run2": 201.2,
+          "shuffled_reward:run0": 198.9,
+          "shuffled_reward:run1": 198.2,
+          "shuffled_reward:run2": 185.7
+        },
+        "total": 1210.2,
+        "train": 926.9
+      },
+      "train_settings": {
+        "alpha_exp": 0.7,
+        "alpha_min": 0.02,
+        "episodes": 200,
+        "eps_decay_frac": 0.6,
+        "eps_end": 0.05,
+        "eps_start": 1.0,
+        "gamma": 0.8,
+        "scenarios": [
+          "stable",
+          "high_churn"
+        ],
+        "validate_every": 200
+      },
+      "train_split": "train",
+      "tune_selected": {
+        "global": "f=2,po=0,rs=1,ps=0,tg=all",
+        "path": "results/tune/selected.json"
+      },
+      "variants": {
+        "buffered_control": {
+          "description": "episode-end updates, rewards not permuted (control for shuffled_reward)",
+          "drop": null,
+          "gamma": null,
+          "name": "buffered_control",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "buffered"
+        },
+        "drop_cand_faster": {
+          "description": "feature cand_faster collapsed to bin 0",
+          "drop": "cand_faster",
+          "gamma": null,
+          "name": "drop_cand_faster",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_cand_freshness": {
+          "description": "cand FRESH/STALE merged into one 'present' bin (presence kept)",
+          "drop": "cand",
+          "gamma": null,
+          "name": "drop_cand_freshness",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_churn": {
+          "description": "feature churn collapsed to bin 0",
+          "drop": "churn",
+          "gamma": null,
+          "name": "drop_churn",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_inc_age": {
+          "description": "feature inc_age collapsed to bin 0",
+          "drop": "inc_age",
+          "gamma": null,
+          "name": "drop_inc_age",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_inc_fail": {
+          "description": "feature inc_fail collapsed to bin 0",
+          "drop": "inc_fail",
+          "gamma": null,
+          "name": "drop_inc_fail",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_inc_stale": {
+          "description": "feature inc_stale collapsed to bin 0",
+          "drop": "inc_stale",
+          "gamma": null,
+          "name": "drop_inc_stale",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "drop_tier": {
+          "description": "feature tier collapsed to bin 0",
+          "drop": "tier",
+          "gamma": null,
+          "name": "drop_tier",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "gamma0": {
+          "description": "gamma = 0 (myopic: Q estimates the immediate epoch reward)",
+          "drop": null,
+          "gamma": 0.0,
+          "name": "gamma0",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.0,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "no_probe": {
+          "description": "PROBE masked out in training and evaluation",
+          "drop": null,
+          "gamma": null,
+          "name": "no_probe",
+          "no_probe": true,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "online"
+        },
+        "shuffled_reward": {
+          "description": "episode-end updates with rewards permuted within the episode",
+          "drop": null,
+          "gamma": null,
+          "name": "shuffled_reward",
+          "no_probe": false,
+          "settings": {
+            "alpha_exp": 0.7,
+            "alpha_min": 0.02,
+            "episodes": 200,
+            "eps_decay_frac": 0.6,
+            "eps_end": 0.05,
+            "eps_start": 1.0,
+            "gamma": 0.8,
+            "scenarios": [
+              "stable",
+              "high_churn"
+            ],
+            "validate_every": 200
+          },
+          "update_mode": "shuffled"
+        }
+      },
+      "workers": 8
+    },
+    "memoryless": {
+      "agent_cross_check": {
+        "all_match": true,
+        "candidate": "E:\\oss\\AI2(course)\\results\\ablations\\agent\\per_seed.csv",
+        "checked": true,
+        "labels": [
+          "canonical:run0",
+          "canonical:run1",
+          "canonical:run2",
+          "kademlia_epoch",
+          "never_replace",
+          "tuned_heuristic"
+        ],
+        "n_mismatch": 0,
+        "n_rows": 120,
+        "scenario": "heldout_medium",
+        "sha256": "d4fa8e77133f468b715e0010a4c826b5edbbda9d192419ac71a6fad7a241c3e3"
+      },
+      "analysis_plan": "Memoryless held-out scenario: pre-registered analysis plan (fixed before any\nmemoryless result existed; the same text, :data:`MEMORYLESS_ANALYSIS_PLAN`,\nis stored in ``<out>/manifest.json`` under ``suites.memoryless``)\n--------------------------------------------------------------------------\n1. Question. Every frozen scenario draws sessions from a Weibull with shape\n   0.6 (decreasing hazard: a contact that has been online long is likely to\n   stay online, which the inc_age feature and the heuristics can exploit).\n   Does the canonical RL policy's standing relative to the baselines change\n   when sessions are memoryless (exponential, shape 1.0), i.e. when a\n   contact's age carries no information about its remaining lifetime?\n2. Scenario. ``heldout_memoryless`` = ``heldout_medium`` with\n   ``weibull_shape = 1.0``. The churn model sets the Weibull scale to\n   mean / Gamma(1 + 1/shape), so the mean session lengths, the online\n   fraction and the mean churn rate are unchanged; only the hazard shape\n   changes. The scenario is NOT in the frozen manifest. Its env must differ\n   from the frozen heldout_medium env only in ``scenario.name`` and\n   ``scenario.weibull_shape``: substituting heldout_medium's values for those\n   two fields must give exactly the frozen heldout_medium env hash\n   (:func:`check_derived_scenario`; abort otherwise). Its env hash, config\n   hash and TOML sha256 are recorded in ``<out>/manifest.json``\n   (``suites.memoryless.scenario`` and ``extra_scenarios``); the frozen\n   manifest is only read.\n3. Seeds. TEST split, run 0, episodes 0..19 (the agent-suite seeds,\n   ``check_test_seeds_disjoint``), on heldout_memoryless AND on\n   heldout_medium (the paired shape-0.6 reference: same seeds, same\n   policies), full-length episodes.\n4. Policies. Canonical RL (the 3 final Q-tables, greedy; ``rl_mean`` =\n   per-seed mean over the 3 runs), tuned_heuristic (global selection of\n   ``results/tune/selected.json``), kademlia_epoch, matched_random,\n   never_replace, uniform_random and oracle_heuristic (ground-truth\n   reference, not a competitor). No retraining and no re-tuning on the new\n   scenario. matched_random frequencies for heldout_memoryless are measured\n   as in task 9.2: the canonical Q-tables run greedily on VALIDATION run 0,\n   episodes 0..4 of heldout_memoryless, decisions pooled; heldout_medium uses\n   ``results/matched/freqs.json`` (read-only) when its env hash matches,\n   else it is measured the same way.\n5. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected; paired bootstrap 95% CI, 10 000 resamples, seed 0; two-sided\n   Wilcoxon signed-rank p).\n   (a) ``rl_vs_reference``: per scenario, rl_mean \u2212 reference on J,\n       success_rate, p95_latency_all_ms and pings_per_hour.\n   (b) ``shape_effect``: per policy (and rl_mean), metric(heldout_memoryless)\n       \u2212 metric(heldout_medium), paired by TEST episode (same env seed; the\n       churn draws differ), same metrics.\n   (c) ``gap_shift``: [rl_mean \u2212 ref]_memoryless \u2212 [rl_mean \u2212 ref]_medium on\n       J and p95_latency_all_ms, ref in tuned_heuristic, kademlia_epoch,\n       matched_random, paired by episode.\n   Cross-check (recorded, not a gate): heldout_medium rows of labels also in\n   ``<out>/agent/per_seed.csv`` must reproduce its trace / summary hashes.\n6. Caveat. One scenario, 20 seeds, no correction: descriptive evidence about\n   the hazard shape only.",
+      "canonical": {
+        "q_tables": [
+          {
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run0\\q_final.npy",
+            "sha256": "6d3133edcecff07f1d3c95715dfc4d5d1bf65a42ed3c77a7e3285a77af6ee95b"
+          },
+          {
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run1\\q_final.npy",
+            "sha256": "927ba79fce5e8d193d12eb097eeccf5c96ce0f0e6110264839080b737b9c1436"
+          },
+          {
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run2\\q_final.npy",
+            "sha256": "df526dc82960b0a5d3bd09daae564358d037788e9ecd90c023ccfe7d170f9144"
+          }
+        ],
+        "settings_match": null,
+        "train_manifest": null
+      },
+      "caveat": "One held-out scenario, 20 TEST seeds, no multiple-comparison correction; the canonical policies were neither retrained nor re-tuned on it.",
+      "config_hashes": {
+        "heldout_medium": "e39717f39c99e773387d5a05e2b6a6b4cbfe65a998fda80a28d11da7c5e4d097",
+        "heldout_memoryless": "46b8a18bbe9991f942dd033e919657b52e4844fc6e659ca398a7dca5a1457b07"
+      },
+      "created_utc": "2026-10-26T03:04:07+00:00",
+      "env_hashes": {
+        "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+        "heldout_memoryless": "7bb92a79bc4820b9519e32c2db5ceb07216e1ce2d18a6c119ff60e086c5d4335"
+      },
+      "eval_scenarios": [
+        "heldout_memoryless",
+        "heldout_medium"
+      ],
+      "eval_seeds": {
+        "checked_against": [
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "calibration",
+            "runs": [
+              0
+            ],
+            "split": "calibration"
+          },
+          {
+            "episodes": [
+              0,
+              199
+            ],
+            "name": "train",
+            "runs": [
+              0,
+              1,
+              2
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              9
+            ],
+            "name": "tuning",
+            "runs": [
+              1000
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              4
+            ],
+            "name": "validation",
+            "runs": [
+              0
+            ],
+            "split": "validation"
+          },
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "eval",
+            "runs": [
+              0
+            ],
+            "split": "eval"
+          }
+        ],
+        "episodes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "n_other_seed_states": 655,
+        "overlap": false,
+        "run": 0,
+        "split": "test"
+      },
+      "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\train.toml",
+      "exploratory": true,
+      "frozen_manifest": {
+        "access": "read-only (check_frozen / check_derived_scenario)",
+        "path": "results\\headroom\\manifest.json",
+        "sha256": "969745797e8cd4af5d4c9889112adf0fe25f052865d0310dc4a16f34ec0db67d"
+      },
+      "git_hash": "5aafbc6cb7e48a25a3e27fa27a200be40eab1832",
+      "matched_freqs": {
+        "heldout_medium": {
+          "cand": [
+            0.9557605867045186,
+            0.01656020818547433,
+            0.027679205110007096
+          ],
+          "counts": {
+            "cand": [
+              4040,
+              70,
+              117
+            ],
+            "no_cand": [
+              5545,
+              76,
+              0
+            ]
+          },
+          "env_hash": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+          "n_episodes": 15,
+          "no_cand": [
+            0.9864792741505071,
+            0.013520725849492973,
+            0.0
+          ],
+          "source": "canonical:results/matched/freqs.json (read-only)",
+          "split": "validation"
+        },
+        "heldout_memoryless": {
+          "cand": [
+            0.9570825515947468,
+            0.01876172607879925,
+            0.024155722326454035
+          ],
+          "counts": {
+            "cand": [
+              4081,
+              80,
+              103
+            ],
+            "no_cand": [
+              5431,
+              108,
+              0
+            ]
+          },
+          "env_hash": "7bb92a79bc4820b9519e32c2db5ceb07216e1ce2d18a6c119ff60e086c5d4335",
+          "episodes": [
+            0,
+            4
+          ],
+          "n_episodes": 15,
+          "no_cand": [
+            0.9805018956490341,
+            0.019498104350965877,
+            0.0
+          ],
+          "run": 0,
+          "source": "measured (task 9.2 procedure)",
+          "split": "validation"
+        }
+      },
+      "multiple_comparison_correction": "none (exploratory; p-values uncorrected)",
+      "n_eval_jobs": 360,
+      "outputs": [
+        "figures\\memoryless_J_p95.png",
+        "memoryless\\deltas.csv",
+        "memoryless\\matched_freqs.json",
+        "memoryless\\per_seed.csv",
+        "memoryless\\summary.csv",
+        "memoryless\\summary.md"
+      ],
+      "packages": {
+        "churnmaster": "0.1.0",
+        "matplotlib": "3.9.2",
+        "numpy": "2.1.3",
+        "pandas": "2.2.3",
+        "python": "3.11.9",
+        "scipy": "1.14.1"
+      },
+      "per_seed_sha256": "ff282548d6c5ac615af7368a9787a83536a3c2c828099a205532db25602ce20b",
+      "policies": {
+        "kademlia_epoch": "kademlia_epoch",
+        "matched_random": "matched_random",
+        "never_replace": "never_replace",
+        "oracle_heuristic": "oracle_heuristic",
+        "tuned_heuristic": "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+        "uniform_random": "uniform_random"
+      },
+      "reward": {
+        "w_L": 0.3,
+        "w_M": 0.1,
+        "w_R": 0.15
+      },
+      "root_seed": 20240601,
+      "runs": [
+        0,
+        1,
+        2
+      ],
+      "scenario": {
+        "allowed_diff_fields": [
+          "name",
+          "weibull_shape"
+        ],
+        "config_hash": "46b8a18bbe9991f942dd033e919657b52e4844fc6e659ca398a7dca5a1457b07",
+        "differs": {
+          "name": [
+            "heldout_medium",
+            "heldout_memoryless"
+          ],
+          "weibull_shape": [
+            0.6,
+            1.0
+          ]
+        },
+        "env_hash": "7bb92a79bc4820b9519e32c2db5ceb07216e1ce2d18a6c119ff60e086c5d4335",
+        "in_frozen_manifest": false,
+        "name": "heldout_memoryless",
+        "parent": "heldout_medium",
+        "parent_env_hash": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+        "scenario": {
+          "burn_in_s": 7200,
+          "bursts": null,
+          "downtime_mean_s": 720.0,
+          "flaky_session_mean_s": 600.0,
+          "name": "heldout_memoryless",
+          "stable_session_mean_s": 7200.0,
+          "stable_share": 0.45,
+          "weibull_shape": 1.0
+        },
+        "toml": "E:/oss/AI2(course)/configs/ablations/heldout_memoryless.toml",
+        "toml_sha256": "70c4c368dbae8e1b05e7970fae1f972e7bbb147cce33813fd8cb5bbe0fb26568"
+      },
+      "stats": {
+        "bootstrap_resamples": 10000,
+        "bootstrap_seed": 0,
+        "ci_level": 0.95,
+        "pairing": "TEST episode",
+        "rl_mean": "per-seed mean over the canonical runs",
+        "wilcoxon": "two-sided, zero_method=wilcox"
+      },
+      "suite": "memoryless",
+      "timings_s": {
+        "eval": 28.4,
+        "matched_freqs": 2.1,
+        "total": 31.1
+      },
+      "tune_selected": {
+        "global": "f=2,po=0,rs=1,ps=0,tg=all",
+        "path": "results/tune/selected.json"
+      },
+      "workers": 8
+    },
+    "reward": {
+      "analysis_plan": "Reward-weight sweep: pre-registered analysis plan (fixed before any sweep\nresult existed; the same text, :data:`REWARD_ANALYSIS_PLAN`, is stored in\n``<out>/manifest.json`` under ``suites.reward``)\n--------------------------------------------------------------------------\n1. Question. The report hypothesizes that RL trails the tuned heuristic\n   partly because the latency weight w_L=0.3 is too light (RL p95 is 18-38%\n   above the best baseline). The sweep tests whether a higher w_L lowers RL's\n   p95 and narrows the gap.\n2. Cells. The task grid w_M in {0.05, 0.2, 0.5} x w_L in {0.1, 0.3, 0.6}\n   (9 cells), plus a w_L line at the canonical w_M=0.1: w_L in {0.1, 0.6,\n   1.0} (3 cells). Together 12 trained cells. The point w_L=0.3, w_M=0.1 is\n   canonical and reuses the 3 canonical Q-tables (no retraining). In every\n   cell w_R = 1.5 * w_M (the canonical ratio 0.15 / 0.1). Cell names\n   ``wL<w_L>_wM<w_M>``, e.g. ``wL0.6_wM0.2``.\n3. Training. As in the agent suite: 3 runs (runs 0..2), gamma=0.8,\n   alpha_min=0.02, 200 episodes alternating stable / high_churn, the same\n   TRAIN seeds and agent exploration streams; only the reward weights used\n   by the Ledger during training change. Reward is not part of\n   env_config_hash, so the frozen env is unaffected (``check_frozen`` is\n   still called for every cell config).\n4. Evaluation. TEST split, run 0, episodes 0..19 x {stable, high_churn,\n   heldout_medium} (the agent-suite seeds; ``check_test_seeds_disjoint``).\n   Every policy is SCORED UNDER THE CANONICAL WEIGHTS (w_L 0.3, w_M 0.1,\n   w_R 0.15), so J is comparable to the primary study. Additionally\n   ``J_train`` = J under the cell's own training weights, recomputed from the\n   per-lookup / per-decision records with ``rl.reward.lookup_loss`` /\n   ``action_cost``; the same recomputation at the canonical weights is checked\n   to equal the ledger J for every episode. Raw metrics: success_rate,\n   p95_latency_all_ms, mean_latency_ms, pings_per_hour, evictions_per_hour.\n5. References on the same TEST seeds: canonical RL (3 Q-tables),\n   tuned_heuristic, kademlia_epoch, never_replace. Their rows are reused from\n   ``<out>/agent/per_seed.csv`` when the labels / seeds / config hashes /\n   canonical Q-table hashes match and a re-run of the first TEST episode of\n   every reference x scenario reproduces the stored trace and summary hashes;\n   otherwise they are re-run.\n6. Statistics (exploratory, NO multiple-comparison correction; p-values are\n   uncorrected). Per cell x scenario: the paired per-seed difference\n   ``rl_mean(cell) - rl_mean(canonical)`` on canonical-weight J,\n   p95_latency_all_ms, pings_per_hour and success_rate (paired bootstrap 95%\n   CI, 10 000 resamples, seed 0; two-sided Wilcoxon signed-rank p);\n   ``rl_mean(cell) - tuned_heuristic`` on canonical-weight J and on\n   p95_latency_all_ms (the \"gap\" quantities); per-run values. Monotonic-trend\n   summary: Spearman rho between w_L and the RL mean p95 across the w_L line\n   at w_M=0.1 (w_L 0.1, 0.3, 0.6, 1.0), per scenario -- n=4 points,\n   descriptive only.\n7. Caveat. The tuned heuristic was tuned under the canonical weights; a\n   heuristic re-tuned for other weights is not part of this sweep.",
+      "canonical": {
+        "q_tables": [
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run0\\q_final.npy",
+            "sha256": "6d3133edcecff07f1d3c95715dfc4d5d1bf65a42ed3c77a7e3285a77af6ee95b"
+          },
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run1\\q_final.npy",
+            "sha256": "927ba79fce5e8d193d12eb097eeccf5c96ce0f0e6110264839080b737b9c1436"
+          },
+          {
+            "alpha_min": 0.02,
+            "gamma": 0.8,
+            "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+            "path": "results\\train\\final\\run2\\q_final.npy",
+            "sha256": "df526dc82960b0a5d3bd09daae564358d037788e9ecd90c023ccfe7d170f9144"
+          }
+        ],
+        "settings_match": true,
+        "train_manifest": "E:\\oss\\AI2(course)\\results\\train\\final\\train_manifest.json"
+      },
+      "caveat": "The tuned heuristic was tuned under the canonical weights (w_L 0.3, w_M 0.1, w_R 0.15); a heuristic re-tuned for other weights is not part of this sweep.",
+      "cell_config_hashes": {
+        "wL0.1_wM0.05": {
+          "heldout_medium": "edcec88651af01c504bd2900d9b4574b76a3455ae6a6a3828f4fae5493909970",
+          "high_churn": "de594b554187e2effd307f927603f108182021339180c8711211b9fa4312668e",
+          "stable": "bc68c7cf37bb839bf91784ccedaf67e0958991d4c7898247ab61a1da6e2fc1f9"
+        },
+        "wL0.1_wM0.1": {
+          "heldout_medium": "1c8dc1e873d286246ca282bb5a19bff2e436b9be150a55b912efcecce78f5196",
+          "high_churn": "4143e96e6acc19f0292afeedda4c053e0f14a10df552bb1d15cb75e36f882478",
+          "stable": "ecd072e5f144fd4d67d1feae44e1035fae29001c3d491eaad241fcd9ee973968"
+        },
+        "wL0.1_wM0.2": {
+          "heldout_medium": "ac9aeeceafb0bd5eaabe0fa45dccb5559a99a86d5d75c1617d9f50b8cec0ebd6",
+          "high_churn": "53668cf635540f13265a253d257c873ec4bc17e2bd79482db89c1d7cbb456580",
+          "stable": "644b4c2292dbcceda87a7e85bd3a1ab1600423100e367791c2cf7c2cf1d606f7"
+        },
+        "wL0.1_wM0.5": {
+          "heldout_medium": "1b374951100e95a3c069e7703e41844a884b61052049c9f15b2dbdff6fc734e8",
+          "high_churn": "9afa897b1598953efad7915d4a1b7fceca6a2c4882df32a1c1cf6ee07ddf5433",
+          "stable": "ca899441c11c3bb8fd51b3d6737f57df5df9d0ae55b767865e4a16d7c83c0105"
+        },
+        "wL0.3_wM0.05": {
+          "heldout_medium": "9c065f0aa06954d85eea365a4ce3f23aab94ffca991d14b528da2a2429425838",
+          "high_churn": "32be0355f67cff5ec6e51e0a8c9001aba6c67e5140c3d0b96db120002ed92a30",
+          "stable": "69ccdda05c5d1cb0c6bf5580fea1c9451b5cb2421f9ac5c876b84784205e33c9"
+        },
+        "wL0.3_wM0.2": {
+          "heldout_medium": "68356bf03b0f8fca36bafa0b5fd7209eab02c2e7f09040995ea11146b56eb944",
+          "high_churn": "2fbdd2239adab4d73c72c690c0f9e14ffaa2fda6fe683f74b2ba4e329f7167f7",
+          "stable": "234c456d6bb98df3eff1d5715a004beeb2981513351669cd7a47530e821f2e8d"
+        },
+        "wL0.3_wM0.5": {
+          "heldout_medium": "a21ba1f874a33bc8238bb0e31a26d1c4f613b410b3d1d9ce0a72915280d3153f",
+          "high_churn": "b79b9d704a14bc2c73616041cadf642a095ae7cb0b3bd70ff36636e6410b00b1",
+          "stable": "b80736fea13d81f24a087a0adb65b90ee366448aefd09ef112086c66f616242d"
+        },
+        "wL0.6_wM0.05": {
+          "heldout_medium": "652228403b34ac8d5f130e82ed33b5bda59be9f47cad10b974514a809fce4eef",
+          "high_churn": "6cdb9ecff0e6652409189d9efe5af50b4acd7e60ab3bfa6f6db8854d7c6668bd",
+          "stable": "340dce403eed37ea441a795eee3f19f0acb3f329e4c69ffcea52a438b6215c1a"
+        },
+        "wL0.6_wM0.1": {
+          "heldout_medium": "ff4b8928402722e51f993736804a8122e5916b209b75a327784ca89fbf7d502d",
+          "high_churn": "cf71b002d4b0a3f6ddf1a6eccf217c90d83de9f7f676fcb2309b5063bbda5ef1",
+          "stable": "eacb16b58608ca7cd4ae7c399147b534041c1eabf70c5e44778f5dd0ed13711f"
+        },
+        "wL0.6_wM0.2": {
+          "heldout_medium": "d54e226bbfbf385d61fa1c2d5a46b3c0073ab8abf3d8c611d5635bb21770362b",
+          "high_churn": "22b948468d872ccac72b0e81f3a3304b34e4c0dd94659506edb7c4f4030d5547",
+          "stable": "fc9339add12f8cb8581137aa7c85f47ec4d70851ea8a673e3a1cd8e0b3d8b9c5"
+        },
+        "wL0.6_wM0.5": {
+          "heldout_medium": "fa0b09c338e5d2c5c018d7f351df0a990f8cda363c78c20211b406465c29cbeb",
+          "high_churn": "91e6f2e112f0c332bf629900d972582b84f267022ae1a79231e688024a61abe1",
+          "stable": "bc13fb34f260104ebb233a41b0a4f55bbdb2b333e6475b8ad2ec5e4146261222"
+        },
+        "wL1.0_wM0.1": {
+          "heldout_medium": "1cfce8f8777d369bb9d863d29f3eafc5096013d258929b34e6c38eba887537e8",
+          "high_churn": "84477beaba11d0d0d2f1c07de314ab139c6291f313c2ddec9aab5a6638035ac5",
+          "stable": "28db6cf444b13a531d2286a18b7061e7c37902040c407367620fb50024298d8c"
+        }
+      },
+      "cells": {
+        "wL0.1_wM0.05": {
+          "name": "wL0.1_wM0.05",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.1,
+          "w_M": 0.05,
+          "w_R": 0.075
+        },
+        "wL0.1_wM0.1": {
+          "name": "wL0.1_wM0.1",
+          "origin": "line",
+          "reuses_canonical": false,
+          "w_L": 0.1,
+          "w_M": 0.1,
+          "w_R": 0.15
+        },
+        "wL0.1_wM0.2": {
+          "name": "wL0.1_wM0.2",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.1,
+          "w_M": 0.2,
+          "w_R": 0.3
+        },
+        "wL0.1_wM0.5": {
+          "name": "wL0.1_wM0.5",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.1,
+          "w_M": 0.5,
+          "w_R": 0.75
+        },
+        "wL0.3_wM0.05": {
+          "name": "wL0.3_wM0.05",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.3,
+          "w_M": 0.05,
+          "w_R": 0.075
+        },
+        "wL0.3_wM0.1": {
+          "name": "wL0.3_wM0.1",
+          "origin": "canonical",
+          "reuses_canonical": true,
+          "w_L": 0.3,
+          "w_M": 0.1,
+          "w_R": 0.15
+        },
+        "wL0.3_wM0.2": {
+          "name": "wL0.3_wM0.2",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.3,
+          "w_M": 0.2,
+          "w_R": 0.3
+        },
+        "wL0.3_wM0.5": {
+          "name": "wL0.3_wM0.5",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.3,
+          "w_M": 0.5,
+          "w_R": 0.75
+        },
+        "wL0.6_wM0.05": {
+          "name": "wL0.6_wM0.05",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.6,
+          "w_M": 0.05,
+          "w_R": 0.075
+        },
+        "wL0.6_wM0.1": {
+          "name": "wL0.6_wM0.1",
+          "origin": "line",
+          "reuses_canonical": false,
+          "w_L": 0.6,
+          "w_M": 0.1,
+          "w_R": 0.15
+        },
+        "wL0.6_wM0.2": {
+          "name": "wL0.6_wM0.2",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.6,
+          "w_M": 0.2,
+          "w_R": 0.3
+        },
+        "wL0.6_wM0.5": {
+          "name": "wL0.6_wM0.5",
+          "origin": "grid",
+          "reuses_canonical": false,
+          "w_L": 0.6,
+          "w_M": 0.5,
+          "w_R": 0.75
+        },
+        "wL1.0_wM0.1": {
+          "name": "wL1.0_wM0.1",
+          "origin": "line",
+          "reuses_canonical": false,
+          "w_L": 1.0,
+          "w_M": 0.1,
+          "w_R": 0.15
+        }
+      },
+      "config_hashes": {
+        "heldout_medium": "e39717f39c99e773387d5a05e2b6a6b4cbfe65a998fda80a28d11da7c5e4d097",
+        "high_churn": "ba3e9d11116c9a08427a17d999bb7da1009af32f3489e3fe15c1055108a95ff6",
+        "stable": "a38595e561d5ea82ec6de66a25405ce410e3209e12a475dbacc340ae9e5cc2a4"
+      },
+      "context_policies": {
+        "kademlia_epoch": "kademlia_epoch",
+        "never_replace": "never_replace",
+        "tuned_heuristic": "heuristic:f=2,po=0,rs=1,ps=0,tg=all"
+      },
+      "created_utc": "2026-10-26T01:45:17+00:00",
+      "env_hashes": {
+        "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+        "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+        "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+      },
+      "eval_scenarios": [
+        "stable",
+        "high_churn",
+        "heldout_medium"
+      ],
+      "eval_seeds": {
+        "checked_against": [
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "calibration",
+            "runs": [
+              0
+            ],
+            "split": "calibration"
+          },
+          {
+            "episodes": [
+              0,
+              199
+            ],
+            "name": "train",
+            "runs": [
+              0,
+              1,
+              2
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              9
+            ],
+            "name": "tuning",
+            "runs": [
+              1000
+            ],
+            "split": "train"
+          },
+          {
+            "episodes": [
+              0,
+              4
+            ],
+            "name": "validation",
+            "runs": [
+              0
+            ],
+            "split": "validation"
+          },
+          {
+            "episodes": [
+              0,
+              19
+            ],
+            "name": "eval",
+            "runs": [
+              0
+            ],
+            "split": "eval"
+          }
+        ],
+        "episodes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ],
+        "n_other_seed_states": 655,
+        "overlap": false,
+        "run": 0,
+        "split": "test"
+      },
+      "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\train.toml",
+      "exploratory": true,
+      "frozen_manifest": {
+        "access": "read-only (check_frozen)",
+        "path": "results\\headroom\\manifest.json",
+        "sha256": "969745797e8cd4af5d4c9889112adf0fe25f052865d0310dc4a16f34ec0db67d"
+      },
+      "git_hash": "e66992ccf0bd840f2749ffa46e09db90f405db95",
+      "j_recomputation": {
+        "max_abs_dev_vs_ledger": 1.1102230246251565e-16,
+        "method": "rl.reward.lookup_loss / action_cost over measured records",
+        "tolerance": 1e-09
+      },
+      "multiple_comparison_correction": "none (exploratory; p-values uncorrected)",
+      "n_eval_jobs": 2178,
+      "n_train_runs": 36,
+      "outputs": [
+        "figures\\reward_sweep_J.png",
+        "figures\\reward_sweep_p95.png",
+        "figures\\reward_sweep_tradeoff.png",
+        "reward\\cells\\wL0.1_wM0.05\\run0\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.05\\run0\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.05\\run1\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.05\\run1\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.05\\run2\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.05\\run2\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.1\\run0\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.1\\run0\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.1\\run1\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.1\\run1\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.1\\run2\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.1\\run2\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.2\\run0\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.2\\run0\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.2\\run1\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.2\\run1\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.2\\run2\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.2\\run2\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.5\\run0\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.5\\run0\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.5\\run1\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.5\\run1\\q_final.npy",
+        "reward\\cells\\wL0.1_wM0.5\\run2\\curves.csv",
+        "reward\\cells\\wL0.1_wM0.5\\run2\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.05\\run0\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.05\\run0\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.05\\run1\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.05\\run1\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.05\\run2\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.05\\run2\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.2\\run0\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.2\\run0\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.2\\run1\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.2\\run1\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.2\\run2\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.2\\run2\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.5\\run0\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.5\\run0\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.5\\run1\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.5\\run1\\q_final.npy",
+        "reward\\cells\\wL0.3_wM0.5\\run2\\curves.csv",
+        "reward\\cells\\wL0.3_wM0.5\\run2\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.05\\run0\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.05\\run0\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.05\\run1\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.05\\run1\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.05\\run2\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.05\\run2\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.1\\run0\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.1\\run0\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.1\\run1\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.1\\run1\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.1\\run2\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.1\\run2\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.2\\run0\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.2\\run0\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.2\\run1\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.2\\run1\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.2\\run2\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.2\\run2\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.5\\run0\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.5\\run0\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.5\\run1\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.5\\run1\\q_final.npy",
+        "reward\\cells\\wL0.6_wM0.5\\run2\\curves.csv",
+        "reward\\cells\\wL0.6_wM0.5\\run2\\q_final.npy",
+        "reward\\cells\\wL1.0_wM0.1\\run0\\curves.csv",
+        "reward\\cells\\wL1.0_wM0.1\\run0\\q_final.npy",
+        "reward\\cells\\wL1.0_wM0.1\\run1\\curves.csv",
+        "reward\\cells\\wL1.0_wM0.1\\run1\\q_final.npy",
+        "reward\\cells\\wL1.0_wM0.1\\run2\\curves.csv",
+        "reward\\cells\\wL1.0_wM0.1\\run2\\q_final.npy",
+        "reward\\comparison.csv",
+        "reward\\greedy_stats.json",
+        "reward\\per_run.csv",
+        "reward\\per_seed.csv",
+        "reward\\summary.csv",
+        "reward\\trend.csv"
+      ],
+      "packages": {
+        "churnmaster": "0.1.0",
+        "matplotlib": "3.9.2",
+        "numpy": "2.1.3",
+        "pandas": "2.2.3",
+        "python": "3.11.9",
+        "scipy": "1.14.1"
+      },
+      "per_seed_sha256": "3ca9c217f4d1d5cd26bb8b870597b8ebf1e1c2d11fc524cf3286c8c7916f2440",
+      "references": {
+        "candidate": "E:\\oss\\AI2(course)\\results\\ablations\\agent\\per_seed.csv",
+        "n_rows": 360,
+        "reused": true,
+        "sha256": "d4fa8e77133f468b715e0010a4c826b5edbbda9d192419ac71a6fad7a241c3e3",
+        "spot_checks": [
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run0",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run0",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run0",
+            "scenario": "heldout_medium"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run1",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run1",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run1",
+            "scenario": "heldout_medium"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run2",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run2",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "canonical:run2",
+            "scenario": "heldout_medium"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "tuned_heuristic",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "tuned_heuristic",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "tuned_heuristic",
+            "scenario": "heldout_medium"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "kademlia_epoch",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "kademlia_epoch",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "kademlia_epoch",
+            "scenario": "heldout_medium"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "never_replace",
+            "scenario": "stable"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "never_replace",
+            "scenario": "high_churn"
+          },
+          {
+            "episode": 0,
+            "match": true,
+            "policy": "never_replace",
+            "scenario": "heldout_medium"
+          }
+        ]
+      },
+      "root_seed": 20240601,
+      "runs": [
+        0,
+        1,
+        2
+      ],
+      "scoring_weights": {
+        "w_L": 0.3,
+        "w_M": 0.1,
+        "w_R": 0.15
+      },
+      "stats": {
+        "bootstrap_resamples": 10000,
+        "bootstrap_seed": 0,
+        "ci_level": 0.95,
+        "pairing": [
+          "scenario",
+          "split",
+          "episode"
+        ],
+        "rl_mean": "per-seed mean over the runs of a cell",
+        "wilcoxon": "two-sided, zero_method=wilcox"
+      },
+      "suite": "reward",
+      "timings_s": {
+        "eval": 196.0,
+        "per_train_run": {
+          "wL0.1_wM0.05:run0": 148.1,
+          "wL0.1_wM0.05:run1": 148.1,
+          "wL0.1_wM0.05:run2": 150.1,
+          "wL0.1_wM0.1:run0": 154.3,
+          "wL0.1_wM0.1:run1": 153.3,
+          "wL0.1_wM0.1:run2": 154.3,
+          "wL0.1_wM0.2:run0": 161.5,
+          "wL0.1_wM0.2:run1": 162.1,
+          "wL0.1_wM0.2:run2": 162.6,
+          "wL0.1_wM0.5:run0": 148.4,
+          "wL0.1_wM0.5:run1": 147.6,
+          "wL0.1_wM0.5:run2": 148.0,
+          "wL0.3_wM0.05:run0": 148.5,
+          "wL0.3_wM0.05:run1": 148.2,
+          "wL0.3_wM0.05:run2": 148.6,
+          "wL0.3_wM0.2:run0": 161.5,
+          "wL0.3_wM0.2:run1": 161.0,
+          "wL0.3_wM0.2:run2": 162.6,
+          "wL0.3_wM0.5:run0": 148.9,
+          "wL0.3_wM0.5:run1": 147.3,
+          "wL0.3_wM0.5:run2": 148.7,
+          "wL0.6_wM0.05:run0": 148.3,
+          "wL0.6_wM0.05:run1": 148.0,
+          "wL0.6_wM0.05:run2": 161.8,
+          "wL0.6_wM0.1:run0": 153.8,
+          "wL0.6_wM0.1:run1": 154.0,
+          "wL0.6_wM0.1:run2": 209.9,
+          "wL0.6_wM0.2:run0": 162.1,
+          "wL0.6_wM0.2:run1": 147.1,
+          "wL0.6_wM0.2:run2": 147.4,
+          "wL0.6_wM0.5:run0": 154.0,
+          "wL0.6_wM0.5:run1": 152.9,
+          "wL0.6_wM0.5:run2": 154.1,
+          "wL1.0_wM0.1:run0": 209.2,
+          "wL1.0_wM0.1:run1": 208.5,
+          "wL1.0_wM0.1:run2": 209.6
+        },
+        "total": 1027.7,
+        "train": 822.5
+      },
+      "train_settings": {
+        "alpha_exp": 0.7,
+        "alpha_min": 0.02,
+        "episodes": 200,
+        "eps_decay_frac": 0.6,
+        "eps_end": 0.05,
+        "eps_start": 1.0,
+        "gamma": 0.8,
+        "scenarios": [
+          "stable",
+          "high_churn"
+        ],
+        "validate_every": 200
+      },
+      "train_split": "train",
+      "trend_note": "Spearman rho over n=4 w_L points at w_M=0.1 (descriptive only; no inference)",
+      "tune_selected": {
+        "global": "f=2,po=0,rs=1,ps=0,tg=all",
+        "path": "results/tune/selected.json"
+      },
+      "w_R_rule": "w_R = 1.5 * w_M",
+      "workers": 8
+    }
+  },
+  "updated_utc": "2026-10-26T03:04:07+00:00"
+}

@@ -303,7 +303,7 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
   - [x]* 12.2 Implement reward-weight sweep
     - w_M {0.05, 0.2, 0.5} × w_L {0.1, 0.3, 0.6} in `experiments/ablations.py`
     - _Requirements: 28.2_
-  - [ ]* 12.3 Implement memoryless held-out scenario
+  - [x]* 12.3 Implement memoryless held-out scenario
     - Exponential-session scenario config and its evaluation in `experiments/ablations.py`
     - _Requirements: 28.3_
 

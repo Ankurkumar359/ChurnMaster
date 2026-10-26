@@ -2,7 +2,8 @@
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
 tune, evaluate, reproduce (``--quick``, ``--full`` or ``--figures-only``),
-ablate (exploratory ablations, ``--suite agent`` or ``--suite reward``).
+ablate (exploratory ablations, ``--suite agent``, ``--suite reward`` or
+``--suite memoryless``).
 """
 
 from __future__ import annotations
@@ -654,13 +655,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ablate", help="exploratory ablations on TEST seeds (separate from the "
                                       "locked evaluation)")
     _add_config_args(p, scenario=False)
-    p.add_argument("--suite", choices=("agent", "reward"), default="agent",
+    p.add_argument("--suite", choices=("agent", "reward", "memoryless"), default="agent",
                    help="ablation suite (default agent: gamma0, no_probe, shuffled_reward, "
                         "buffered_control, drop_<feature>; reward: w_M x w_L sweep scored "
-                        "under the canonical weights)")
+                        "under the canonical weights; memoryless: canonical policies on the "
+                        "exponential-session scenario heldout_memoryless vs heldout_medium)")
     p.add_argument("--variants", default=None,
-                   help="comma-separated subset of the suite's variants / reward cells "
-                        "(default: all)")
+                   help="comma-separated subset of the suite's variants / reward cells / "
+                        "memoryless reference policies (default: all)")
     p.add_argument("--episodes", type=int, default=None,
                    help="override training episodes (default 200; shortened runs skip the "
                         "canonical-settings check)")
@@ -687,7 +689,7 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_ablate(args: argparse.Namespace) -> int:
     """Exploratory ablations (Requirement 28.1). Exit 0 ok, 1 on usage / input errors."""
     from churnmaster.experiments.ablations import (AblationSeedError, run_agent_suite,
-                                                   run_reward_suite)
+                                                   run_memoryless_suite, run_reward_suite)
     from churnmaster.experiments.runner import FrozenEnvError, default_workers
 
     def fail(msg: str) -> int:
@@ -705,6 +707,17 @@ def cmd_ablate(args: argparse.Namespace) -> int:
               overwrite=args.overwrite, log_every=args.log_every,
               progress=lambda m: print(m, flush=True))
     try:
+        if args.suite == "memoryless":
+            if args.episodes is not None:
+                return fail("--episodes does not apply to --suite memoryless (no training)")
+            for k in ("episodes", "log_every"):
+                kw.pop(k)
+            rep = run_memoryless_suite(root, Path(args.manifest), Path(args.out),
+                                       policies=variants, **kw)
+            _print_memoryless_table(rep)
+            print(f"ablate[{rep.suite}]: wall={rep.wall_s:.1f}s (eval {rep.eval_wall_s:.1f}s); "
+                  f"wrote {len(rep.files)} files to {rep.out_dir}")
+            return 0
         if args.suite == "reward":
             rep = run_reward_suite(root, Path(args.manifest), Path(args.out), cells=variants, **kw)
         else:
@@ -726,6 +739,20 @@ def cmd_ablate(args: argparse.Namespace) -> int:
     print(f"ablate[{rep.suite}]: wall={rep.wall_s:.1f}s (train {rep.train_wall_s:.1f}s, eval "
           f"{rep.eval_wall_s:.1f}s); wrote {len(rep.files)} files to {rep.out_dir}")
     return 0
+
+
+def _print_memoryless_table(rep) -> None:
+    """Per policy x scenario means, then RL vs references and the gap shift."""
+    s, c = rep.summary, rep.comparison
+    print("exploratory; p uncorrected; RL = rl_mean over the canonical runs, TEST seeds")
+    for _, r in s[s["kind"] != "run"].iterrows():
+        print(f"  {r['policy']:<17} {r['scenario']:<19} J={r['J_mean']:.4f} "
+              f"p95={r['p95_latency_all_ms_mean']:7.1f} success={r['success_rate_mean']:.4f} "
+              f"pings/h={r['pings_per_hour_mean']:.1f}")
+    for _, r in c[(c["metric"] == "J") & (c["comparison"] != "shape_effect")].iterrows():
+        print(f"  {r['comparison']:<16} {r['variant']} vs {r['reference']:<16} "
+              f"{r['scenario']:<34} dJ={r['mean_diff']:+.4f} [{r['ci_lo']:+.4f}, "
+              f"{r['ci_hi']:+.4f}] p={r['p_uncorrected']:.3g}")
 
 
 def _print_reward_table(rep) -> None:

@@ -881,6 +881,18 @@
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792979431767
       }
+    ],
+    "12.3 Implement memoryless held-out scenario": [
+      {
+        "executionId": "1d3bf5d6-562c-4b77-9c02-63967cb4fe5c",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792979434058
+      },
+      {
+        "executionId": "1d3bf5d6-562c-4b77-9c02-63967cb4fe5c",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792980865469
+      }
     ]
   }
 }

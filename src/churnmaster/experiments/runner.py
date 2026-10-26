@@ -171,14 +171,32 @@ def job_baseline_rng(root: int, run: int, policy_id: int, split: Split,
 
 @dataclass(frozen=True)
 class ConfigLoader:
-    """Picklable ``scenario -> Config`` loader: base -> scenario -> experiment."""
+    """Picklable ``scenario -> Config`` loader: base -> scenario -> experiment.
+
+    Scenarios are read from ``configs/scenarios`` (the frozen set: headroom and
+    reproduce freeze every file there). ``extra_scenario_dirs`` (subdirectories
+    of ``configs_dir``, e.g. ``("ablations",)``) are searched afterwards for
+    exploratory scenarios that must stay out of the frozen set (task 12.3).
+    """
 
     configs_dir: Path
     experiment: Path | None = None
+    extra_scenario_dirs: tuple[str, ...] = ()
+
+    def scenario_path(self, scenario: str) -> Path:
+        root = Path(self.configs_dir)
+        primary = root / "scenarios" / f"{scenario}.toml"
+        if primary.is_file():
+            return primary
+        for d in self.extra_scenario_dirs:
+            cand = root / d / f"{scenario}.toml"
+            if cand.is_file():
+                return cand
+        return primary   # load_config reports the missing file
 
     def __call__(self, scenario: str) -> Config:
         root = Path(self.configs_dir)
-        return load_config(root / "base.toml", root / "scenarios" / f"{scenario}.toml",
+        return load_config(root / "base.toml", self.scenario_path(scenario),
                            None if self.experiment is None else Path(self.experiment))
 
 

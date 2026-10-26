@@ -1,0 +1,63 @@
+{
+  "heldout_medium": {
+    "cand": [
+      0.9557605867045186,
+      0.01656020818547433,
+      0.027679205110007096
+    ],
+    "counts": {
+      "cand": [
+        4040,
+        70,
+        117
+      ],
+      "no_cand": [
+        5545,
+        76,
+        0
+      ]
+    },
+    "env_hash": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+    "n_episodes": 15,
+    "no_cand": [
+      0.9864792741505071,
+      0.013520725849492973,
+      0.0
+    ],
+    "source": "canonical:results/matched/freqs.json (read-only)",
+    "split": "validation"
+  },
+  "heldout_memoryless": {
+    "cand": [
+      0.9570825515947468,
+      0.01876172607879925,
+      0.024155722326454035
+    ],
+    "counts": {
+      "cand": [
+        4081,
+        80,
+        103
+      ],
+      "no_cand": [
+        5431,
+        108,
+        0
+      ]
+    },
+    "env_hash": "7bb92a79bc4820b9519e32c2db5ceb07216e1ce2d18a6c119ff60e086c5d4335",
+    "episodes": [
+      0,
+      4
+    ],
+    "n_episodes": 15,
+    "no_cand": [
+      0.9805018956490341,
+      0.019498104350965877,
+      0.0
+    ],
+    "run": 0,
+    "source": "measured (task 9.2 procedure)",
+    "split": "validation"
+  }
+}

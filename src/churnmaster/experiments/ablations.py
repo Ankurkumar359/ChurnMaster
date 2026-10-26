@@ -142,6 +142,71 @@ Reward outputs (``<out>/reward/``)::
 
 plus ``<out>/figures/reward_sweep_p95.png``, ``reward_sweep_J.png`` and
 ``reward_sweep_tradeoff.png``.
+
+Memoryless held-out scenario (Task 12.3, Requirement 28.3) -- EXPLORATORY
+=========================================================================
+
+Memoryless held-out scenario: pre-registered analysis plan (fixed before any
+memoryless result existed; the same text, :data:`MEMORYLESS_ANALYSIS_PLAN`,
+is stored in ``<out>/manifest.json`` under ``suites.memoryless``)
+--------------------------------------------------------------------------
+1. Question. Every frozen scenario draws sessions from a Weibull with shape
+   0.6 (decreasing hazard: a contact that has been online long is likely to
+   stay online, which the inc_age feature and the heuristics can exploit).
+   Does the canonical RL policy's standing relative to the baselines change
+   when sessions are memoryless (exponential, shape 1.0), i.e. when a
+   contact's age carries no information about its remaining lifetime?
+2. Scenario. ``heldout_memoryless`` = ``heldout_medium`` with
+   ``weibull_shape = 1.0``. The churn model sets the Weibull scale to
+   mean / Gamma(1 + 1/shape), so the mean session lengths, the online
+   fraction and the mean churn rate are unchanged; only the hazard shape
+   changes. The scenario is NOT in the frozen manifest. Its env must differ
+   from the frozen heldout_medium env only in ``scenario.name`` and
+   ``scenario.weibull_shape``: substituting heldout_medium's values for those
+   two fields must give exactly the frozen heldout_medium env hash
+   (:func:`check_derived_scenario`; abort otherwise). Its env hash, config
+   hash and TOML sha256 are recorded in ``<out>/manifest.json``
+   (``suites.memoryless.scenario`` and ``extra_scenarios``); the frozen
+   manifest is only read.
+3. Seeds. TEST split, run 0, episodes 0..19 (the agent-suite seeds,
+   ``check_test_seeds_disjoint``), on heldout_memoryless AND on
+   heldout_medium (the paired shape-0.6 reference: same seeds, same
+   policies), full-length episodes.
+4. Policies. Canonical RL (the 3 final Q-tables, greedy; ``rl_mean`` =
+   per-seed mean over the 3 runs), tuned_heuristic (global selection of
+   ``results/tune/selected.json``), kademlia_epoch, matched_random,
+   never_replace, uniform_random and oracle_heuristic (ground-truth
+   reference, not a competitor). No retraining and no re-tuning on the new
+   scenario. matched_random frequencies for heldout_memoryless are measured
+   as in task 9.2: the canonical Q-tables run greedily on VALIDATION run 0,
+   episodes 0..4 of heldout_memoryless, decisions pooled; heldout_medium uses
+   ``results/matched/freqs.json`` (read-only) when its env hash matches,
+   else it is measured the same way.
+5. Statistics (exploratory, NO multiple-comparison correction; p-values are
+   uncorrected; paired bootstrap 95% CI, 10 000 resamples, seed 0; two-sided
+   Wilcoxon signed-rank p).
+   (a) ``rl_vs_reference``: per scenario, rl_mean − reference on J,
+       success_rate, p95_latency_all_ms and pings_per_hour.
+   (b) ``shape_effect``: per policy (and rl_mean), metric(heldout_memoryless)
+       − metric(heldout_medium), paired by TEST episode (same env seed; the
+       churn draws differ), same metrics.
+   (c) ``gap_shift``: [rl_mean − ref]_memoryless − [rl_mean − ref]_medium on
+       J and p95_latency_all_ms, ref in tuned_heuristic, kademlia_epoch,
+       matched_random, paired by episode.
+   Cross-check (recorded, not a gate): heldout_medium rows of labels also in
+   ``<out>/agent/per_seed.csv`` must reproduce its trace / summary hashes.
+6. Caveat. One scenario, 20 seeds, no correction: descriptive evidence about
+   the hazard shape only.
+
+Memoryless outputs (``<out>/memoryless/``)::
+
+    per_seed.csv        one row per (label, scenario, TEST episode)
+    summary.csv         per (label, scenario): mean / std
+    deltas.csv          rl_vs_reference / shape_effect / gap_shift: diff, CI, p (uncorrected)
+    summary.md          markdown tables of the headline numbers
+    matched_freqs.json  matched_random frequencies used per scenario
+
+plus ``<out>/figures/memoryless_J_p95.png``.
 """
 
 from __future__ import annotations
@@ -181,6 +246,8 @@ __all__ = [
     "guard_ablation_out", "AblationReport", "run_agent_suite",
     "REWARD_ANALYSIS_PLAN", "CANONICAL_WEIGHTS", "RewardCell", "RewardLoader", "reward_cells",
     "j_from_records", "run_reward_suite",
+    "MEMORYLESS_ANALYSIS_PLAN", "MEMORYLESS_SCENARIO", "MEMORYLESS_PARENT",
+    "MEMORYLESS_POLICIES", "check_derived_scenario", "run_memoryless_suite",
 ]
 
 ANALYSIS_PLAN = (__doc__ or "Pre-registered analysis plan Outputs (").split("Pre-registered analysis plan", 1)[1].split("Outputs (", 1)[0]
@@ -188,8 +255,11 @@ ANALYSIS_PLAN = "Pre-registered analysis plan" + ANALYSIS_PLAN.rstrip()
 _RW_MARK = "Reward-weight sweep: pre-registered analysis plan"
 REWARD_ANALYSIS_PLAN = _RW_MARK + (__doc__ or _RW_MARK + "Reward outputs (").split(
     _RW_MARK, 1)[1].split("Reward outputs (", 1)[0].rstrip()
+_ML_MARK = "Memoryless held-out scenario: pre-registered analysis plan"
+MEMORYLESS_ANALYSIS_PLAN = _ML_MARK + (__doc__ or _ML_MARK + "Memoryless outputs (").split(
+    _ML_MARK, 1)[1].split("Memoryless outputs (", 1)[0].rstrip()
 
-SUITES = ("agent", "reward")
+SUITES = ("agent", "reward", "memoryless")
 CANONICAL_LABEL = "canonical"
 CANONICAL_GAMMA = 0.8
 CANONICAL_ALPHA_MIN = 0.02
@@ -1287,3 +1357,429 @@ def run_reward_suite(configs_dir: Path | str,
     say(f"ablate[reward]: wrote {len(files)} files to {out} ({wall:.1f}s)")
     return AblationReport("reward", out, df, comparison, per_run, summary, greedy, suite_manifest,
                           files, wall, train_wall, eval_wall, trend=trend)
+
+
+# =========================================================================== #
+# Memoryless held-out scenario (Task 12.3, Requirement 28.3)
+# =========================================================================== #
+
+MEMORYLESS_SCENARIO = "heldout_memoryless"
+MEMORYLESS_PARENT = "heldout_medium"
+MEMORYLESS_SHAPE = 1.0
+#: Subdirectory of ``configs/`` holding exploratory scenarios. Deliberately NOT
+#: ``configs/scenarios``: headroom / reproduce freeze every file there, so an
+#: ablation scenario in that directory would leak into canonical manifests.
+ABLATION_CONFIG_DIR = "ablations"
+#: Fields in which the memoryless scenario may differ from its frozen parent.
+MEMORYLESS_DIFF_FIELDS: tuple[str, ...] = ("name", "weibull_shape")
+MEMORYLESS_SCENARIOS: tuple[str, ...] = (MEMORYLESS_SCENARIO, MEMORYLESS_PARENT)
+MEMORYLESS_POLICIES: tuple[str, ...] = (GLOBAL_LABEL, "kademlia_epoch", "matched_random",
+                                        "never_replace", "uniform_random", "oracle_heuristic")
+GAP_REFERENCES: tuple[str, ...] = (GLOBAL_LABEL, "kademlia_epoch", "matched_random")
+RL_MEAN_LABEL = "rl_mean"
+MEMORYLESS_SUMMARY_METRICS: tuple[str, ...] = SUMMARY_METRICS + ("mean_latency_ms",)
+FREQ_SEEDS = 5
+SHAPE_PAIR = f"{MEMORYLESS_SCENARIO}-{MEMORYLESS_PARENT}"
+MEMORYLESS_CAVEAT = ("One held-out scenario, 20 TEST seeds, no multiple-comparison correction; "
+                     "the canonical policies were neither retrained nor re-tuned on it.")
+
+
+def check_derived_scenario(manifest_path: Path | str, cfg: Config, parent_cfg: Config,
+                           fields: Sequence[str] = MEMORYLESS_DIFF_FIELDS) -> dict[str, Any]:
+    """Check that ``cfg``'s env equals the frozen ``parent_cfg`` env except for ``fields``.
+
+    ``parent_cfg`` must pass :func:`check_frozen`; substituting the parent's
+    ``scenario.<field>`` values into ``cfg`` must reproduce the frozen parent
+    env hash (``FrozenEnvError`` otherwise). Returns the derived scenario's
+    hashes and the differing field values. The manifest is only read.
+    """
+    from churnmaster.experiments.runner import FrozenEnvError, read_manifest
+
+    parent_hash = check_frozen(manifest_path, parent_cfg)
+    sub = dataclasses.replace(cfg, scenario=dataclasses.replace(
+        cfg.scenario, **{f: getattr(parent_cfg.scenario, f) for f in fields}))
+    if env_config_hash(sub) != parent_hash:
+        raise FrozenEnvError(
+            f"scenario {cfg.scenario.name!r} differs from the frozen {parent_cfg.scenario.name!r} "
+            f"env in more than {list(fields)}; refusing to run")
+    frozen = read_manifest(manifest_path).get("env_hashes") or {}
+    in_manifest = cfg.scenario.name in frozen
+    if in_manifest:
+        check_frozen(manifest_path, cfg)
+    diffs = {f: [getattr(parent_cfg.scenario, f), getattr(cfg.scenario, f)] for f in fields
+             if getattr(parent_cfg.scenario, f) != getattr(cfg.scenario, f)}
+    return {"name": cfg.scenario.name, "parent": parent_cfg.scenario.name,
+            "parent_env_hash": parent_hash, "env_hash": env_config_hash(cfg),
+            "config_hash": config_hash(cfg), "allowed_diff_fields": list(fields),
+            "differs": diffs, "in_frozen_manifest": in_manifest,
+            "scenario": dataclasses.asdict(cfg.scenario)}
+
+
+def _stat_row(xa: np.ndarray, xb: np.ndarray, metric: str, n_resamples: int) -> dict[str, Any]:
+    ci = st.paired_bootstrap_ci(xa, xb, n_resamples=n_resamples, level=0.95, seed=0)
+    w = st.wilcoxon_paired(xa, xb)
+    sign = st.METRIC_DIRECTION.get(metric, +1)
+    return {"metric": metric, "n": ci.n, "mean_variant": float(np.mean(xa)),
+            "mean_reference": float(np.mean(xb)), "mean_diff": ci.mean, "ci_lo": ci.lo,
+            "ci_hi": ci.hi, "excludes_zero": ci.excludes_zero, "wilcoxon_stat": w.statistic,
+            "p_uncorrected": w.p, "favourable": int(np.sign(sign * ci.mean))}
+
+
+def _by_episode(full: pd.DataFrame, policy: str, scenario: str, metric: str) -> pd.Series:
+    sub = full[(full["policy"] == policy) & (full["scenario"] == scenario)]
+    if sub.empty or sub["episode"].duplicated().any():
+        raise ValueError(f"need unique rows for {policy}/{scenario}, got {len(sub)}")
+    return sub.set_index("episode")[metric].astype(float).sort_index()
+
+
+def _measure_freqs(q_paths: Sequence[Path], loader: Callable[[str], Config], scenario: str,
+                   n_seeds: int, id_bits: int, workers: int | None) -> dict[str, Any]:
+    """Task 9.2 procedure: canonical greedy RL on VALIDATION run 0, episodes 0..n-1, pooled."""
+    from churnmaster.policies.baselines import action_counts, action_frequencies
+    from churnmaster.policies.learned import Learned
+
+    pols = [Learned.load(p, name=f"learned_run{i}", id_bits=id_bits) for i, p in enumerate(q_paths)]
+    jobs = [Job(pol, scenario, Split.VALIDATION, 0, ep) for pol in pols for ep in range(n_seeds)]
+    results = run_jobs(jobs, cfg_loader=loader, keep_records=True, workers=workers)
+    counts = action_counts([d for r in results for d in (r.decisions or [])])
+    freqs = action_frequencies(counts)
+    return {"freqs": freqs,
+            "counts": {n: [int(x) for x in counts[k]] for k, n in ((False, "no_cand"),
+                                                                   (True, "cand"))},
+            "n_episodes": len(jobs), "split": "validation", "run": 0,
+            "episodes": [0, n_seeds - 1]}
+
+
+def _fmt_ci(r: Mapping[str, Any] | None, d: int) -> str:
+    if r is None:
+        return "-"
+    return f"{r['mean_diff']:+.{d}f} [{r['ci_lo']:+.{d}f}, {r['ci_hi']:+.{d}f}]"
+
+
+def _memoryless_markdown(summary: pd.DataFrame, deltas: pd.DataFrame, policies: Sequence[str],
+                         scenario_info: Mapping[str, Any]) -> str:
+    def s_get(pol: str, scn: str, m: str) -> float:
+        r = summary[(summary["policy"] == pol) & (summary["scenario"] == scn)]
+        return float(r[f"{m}_mean"].iloc[0]) if not r.empty else math.nan
+
+    def d_get(comp: str, a: str, b: str, scn: str, m: str) -> Mapping[str, Any] | None:
+        r = deltas[(deltas["comparison"] == comp) & (deltas["variant"] == a)
+                   & (deltas["reference"] == b) & (deltas["scenario"] == scn)
+                   & (deltas["metric"] == m)]
+        return None if r.empty else r.iloc[0].to_dict()
+
+    M, P = MEMORYLESS_SCENARIO, MEMORYLESS_PARENT
+    sh = scenario_info.get("differs", {}).get("weibull_shape", ["?", "?"])
+    lines = [
+        "# Memoryless held-out scenario (Task 12.3, exploratory)",
+        "",
+        f"`{M}` = `{P}` with Weibull shape {sh[1]} (frozen: {sh[0]}); mean session "
+        "lengths unchanged. TEST split, run 0, episodes 0..19. RL = rl_mean over the 3 "
+        "canonical runs. 95% paired bootstrap CIs; p-values uncorrected (no Holm).",
+        "",
+        "## Per-policy means and shape effect",
+        "",
+        f"| policy | J ({M}) | J ({P}) | ΔJ shape [95% CI] | p95 ms ({M}) | p95 ms ({P}) | "
+        f"Δp95 shape [95% CI] | success ({M}) | pings/h ({M}) |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for pol in policies:
+        lines.append(
+            f"| {pol} | {s_get(pol, M, 'J'):.4f} | {s_get(pol, P, 'J'):.4f} | "
+            f"{_fmt_ci(d_get('shape_effect', pol, pol, SHAPE_PAIR, 'J'), 4)} | "
+            f"{s_get(pol, M, 'p95_latency_all_ms'):.1f} | {s_get(pol, P, 'p95_latency_all_ms'):.1f} | "
+            f"{_fmt_ci(d_get('shape_effect', pol, pol, SHAPE_PAIR, 'p95_latency_all_ms'), 1)} | "
+            f"{s_get(pol, M, 'success_rate'):.4f} | {s_get(pol, M, 'pings_per_hour'):.1f} |")
+    lines += ["", "## RL (rl_mean) vs references", "",
+              "| reference | scenario | ΔJ [95% CI] | p (J) | Δp95 ms [95% CI] | Δpings/h [95% CI] |",
+              "|---|---|---|---|---|---|"]
+    for ref in [p for p in policies if p != RL_MEAN_LABEL]:
+        for scn in (M, P):
+            dj = d_get("rl_vs_reference", RL_MEAN_LABEL, ref, scn, "J")
+            lines.append(
+                f"| {ref} | {scn} | {_fmt_ci(dj, 4)} | "
+                f"{'-' if dj is None else format(dj['p_uncorrected'], '.3g')} | "
+                f"{_fmt_ci(d_get('rl_vs_reference', RL_MEAN_LABEL, ref, scn, 'p95_latency_all_ms'), 1)} | "
+                f"{_fmt_ci(d_get('rl_vs_reference', RL_MEAN_LABEL, ref, scn, 'pings_per_hour'), 1)} |")
+    lines += ["", f"## Gap shift: [RL − ref]_{M} − [RL − ref]_{P}", "",
+              "| reference | ΔΔJ [95% CI] | p (J) | ΔΔp95 ms [95% CI] |", "|---|---|---|---|"]
+    for ref in GAP_REFERENCES:
+        gj = d_get("gap_shift", RL_MEAN_LABEL, ref, SHAPE_PAIR, "J")
+        lines.append(f"| {ref} | {_fmt_ci(gj, 4)} | "
+                     f"{'-' if gj is None else format(gj['p_uncorrected'], '.3g')} | "
+                     f"{_fmt_ci(d_get('gap_shift', RL_MEAN_LABEL, ref, SHAPE_PAIR, 'p95_latency_all_ms'), 1)} |")
+    lines += ["", f"Caveat: {MEMORYLESS_CAVEAT}", ""]
+    return "\n".join(lines)
+
+
+def _cross_check_agent(out: Path, df: pd.DataFrame, scenario: str) -> dict[str, Any]:
+    """Compare heldout_medium rows with ``<out>/agent/per_seed.csv`` (same labels / seeds)."""
+    path = out / "agent" / "per_seed.csv"
+    info: dict[str, Any] = {"candidate": str(path), "scenario": scenario}
+    if not path.is_file():
+        info.update(checked=False, reason="agent per_seed.csv not found")
+        return info
+    old = pd.read_csv(path, float_precision="round_trip")
+    old = old[(old["scenario"] == scenario) & (old["split"] == "test") & (old["run"] == TEST_RUN)]
+    key = ["policy", "scenario", "episode"]
+    m = df[df["scenario"] == scenario].merge(old, on=key, suffixes=("", "_agent"))
+    if m.empty:
+        info.update(checked=False, reason="no common (label, episode) rows")
+        return info
+    ok = (m["trace_hash"] == m["trace_hash_agent"]) & (m["summary_hash"] == m["summary_hash_agent"])
+    info.update(checked=True, n_rows=int(len(m)), labels=sorted(set(m["policy"])),
+                all_match=bool(ok.all()), n_mismatch=int((~ok).sum()),
+                sha256=_sha256_file(path))
+    return info
+
+
+def run_memoryless_suite(configs_dir: Path | str,
+                         manifest_path: Path | str = "results/headroom/manifest.json",
+                         out_dir: Path | str = "results/ablations", *,
+                         experiment_path: Path | str | None = None,
+                         policies: Sequence[str] | None = None,
+                         runs: Sequence[int] = RUNS, n_seeds: int = DEFAULT_N_SEEDS,
+                         canonical_q: Sequence[Path | str] | None = None,
+                         tune_selected: Path | str = "results/tune/selected.json",
+                         matched_freqs: Path | str = "results/matched/freqs.json",
+                         freq_seeds: int = FREQ_SEEDS,
+                         workers: int | None = None, n_resamples: int = 10_000,
+                         overwrite: bool = False,
+                         progress: Callable[[str], None] | None = None) -> AblationReport:
+    """Evaluate the canonical policies on the memoryless held-out scenario (see plan)."""
+    from churnmaster.experiments.diagnostics import _frozen_loader
+    from churnmaster.experiments.matched import load_matched_freqs
+    from churnmaster.plots import plot_headroom_bars
+
+    t0 = time.perf_counter()
+    say = progress or (lambda m: None)
+    configs_dir, manifest_path = Path(configs_dir), Path(manifest_path)
+    out = guard_ablation_out(out_dir)
+    suite_dir = out / "memoryless"
+    if (suite_dir / "summary.csv").exists() and not overwrite:
+        raise ValueError(f"{suite_dir} already holds memoryless results; pass overwrite=True "
+                         f"(--overwrite) to replace them")
+    pols = list(policies) if policies is not None else list(MEMORYLESS_POLICIES)
+    unknown = [p for p in pols if p not in MEMORYLESS_POLICIES]
+    if unknown or not pols or len(set(pols)) != len(pols):
+        raise ValueError(f"bad policy list {pols}; known: {list(MEMORYLESS_POLICIES)}")
+    runs = [int(r) for r in runs]
+    if not runs or len(set(runs)) != len(runs):
+        raise ValueError(f"runs must be unique, got {runs}")
+    if n_seeds < 1 or freq_seeds < 1:
+        raise ValueError("n_seeds and freq_seeds must be >= 1")
+    exp = Path(experiment_path) if experiment_path is not None else \
+        configs_dir / "experiments" / "train.toml"
+    q_paths = [Path(p) for p in (canonical_q if canonical_q is not None else default_q_paths(len(runs)))]
+    if len(q_paths) != len(runs):
+        raise ValueError(f"need one canonical Q-table per run ({len(runs)}), got {len(q_paths)}")
+    toml_path = configs_dir / ABLATION_CONFIG_DIR / f"{MEMORYLESS_SCENARIO}.toml"
+    if not toml_path.is_file():
+        raise FileNotFoundError(f"memoryless scenario config not found: {toml_path}")
+
+    # ---- configs: parent frozen (read-only), memoryless derived ------------------
+    loader = _frozen_loader(configs_dir, exp, manifest_path, (ABLATION_CONFIG_DIR,))
+    cfgs: dict[str, Config] = {s: loader(s) for s in MEMORYLESS_SCENARIOS}
+    mcfg, pcfg = cfgs[MEMORYLESS_SCENARIO], cfgs[MEMORYLESS_PARENT]
+    if not math.isclose(float(mcfg.scenario.weibull_shape), MEMORYLESS_SHAPE):
+        raise ValueError(f"{toml_path} has weibull_shape={mcfg.scenario.weibull_shape}, "
+                         f"expected {MEMORYLESS_SHAPE}")
+    scn_info = check_derived_scenario(manifest_path, mcfg, pcfg)
+    scn_info.update({"toml": toml_path.as_posix(), "toml_sha256": _sha256_file(toml_path)})
+    env_hashes = {MEMORYLESS_PARENT: scn_info["parent_env_hash"],
+                  MEMORYLESS_SCENARIO: scn_info["env_hash"]}
+    cfg_hashes = {s: config_hash(c) for s, c in cfgs.items()}
+    roots = {int(c.root_seed) for c in cfgs.values()}
+    if len(roots) != 1:
+        raise ValueError(f"scenarios disagree on root_seed: {sorted(roots)}")
+    root = roots.pop()
+    eps_list = list(range(int(n_seeds)))
+    disjoint = check_test_seeds_disjoint(root, eps_list)
+    id_bits = pcfg.sim.id_bits
+    canon_info = _q_info_only(q_paths)
+    canon_info.pop("note", None)
+    selected = load_selected(tune_selected)
+    tuned_impl = tuned_policy_names(selected)[GLOBAL_LABEL]
+    rw = pcfg.reward
+
+    # ---- matched_random frequencies ----------------------------------------------
+    freqs: dict[str, dict[bool, tuple[float, float, float]]] = {}
+    freq_info: dict[str, Any] = {}
+    t_fq = time.perf_counter()
+    if "matched_random" in pols:
+        canon_freqs, canon_raw = {}, {}
+        mf = Path(matched_freqs)
+        if mf.is_file():
+            canon_freqs = load_matched_freqs(mf)
+            canon_raw = json.loads(mf.read_text(encoding="utf-8"))
+        for s in MEMORYLESS_SCENARIOS:
+            raw = canon_raw.get(s) or {}
+            if s in canon_freqs and raw.get("env_hash") == env_hashes[s]:
+                freqs[s] = canon_freqs[s]
+                freq_info[s] = {"source": f"canonical:{mf.as_posix()} (read-only)",
+                                "counts": raw.get("counts"), "env_hash": raw.get("env_hash"),
+                                "n_episodes": raw.get("n_episodes"), "split": raw.get("split")}
+            else:
+                say(f"ablate[memoryless]: measuring matched_random frequencies for {s} "
+                    f"(VALIDATION run 0, {freq_seeds} episodes x {len(q_paths)} Q-tables)")
+                m = _measure_freqs(q_paths, loader, s, freq_seeds, id_bits, workers)
+                freqs[s] = m.pop("freqs")
+                freq_info[s] = {"source": "measured (task 9.2 procedure)",
+                                "env_hash": env_hashes[s], **m}
+            freq_info[s]["no_cand"] = [float(x) for x in freqs[s][False]]
+            freq_info[s]["cand"] = [float(x) for x in freqs[s][True]]
+    freq_wall = time.perf_counter() - t_fq
+
+    # ---- evaluation on TEST seeds ------------------------------------------------
+    labels: list[tuple[str, str, int, str, Any]] = []
+    for r, p in zip(runs, q_paths):
+        lab = _run_label(CANONICAL_LABEL, r)
+        labels.append((lab, CANONICAL_LABEL, r, str(p),
+                       EncodedLearned(QAgent.load(p), name=lab, id_bits=id_bits)))
+    for c in pols:
+        impl = tuned_impl if c == GLOBAL_LABEL else c
+        labels.append((c, c, -1, impl, impl))
+    jobs, meta = [], []
+    for s in MEMORYLESS_SCENARIOS:
+        for lab, grp, r, impl, pol in labels:
+            kw = {"freqs": freqs[s]} if grp == "matched_random" else {}
+            for ep in eps_list:
+                jobs.append(Job(pol, s, TEST_SPLIT, TEST_RUN, ep, kw))
+                meta.append((lab, grp, r, impl))
+    say(f"ablate[memoryless]: evaluating {len(labels)} labels x {len(MEMORYLESS_SCENARIOS)} "
+        f"scenarios x {len(eps_list)} TEST seeds = {len(jobs)} episodes (workers={workers})")
+    t_ev = time.perf_counter()
+    results = run_jobs(jobs, cfg_loader=loader, workers=workers)
+    eval_wall = time.perf_counter() - t_ev
+    say(f"ablate[memoryless]: evaluation done in {eval_wall:.1f}s")
+
+    rows = []
+    for (lab, grp, r, impl), res in zip(meta, results):
+        row = res.row()
+        row.pop("policy")
+        rows.append({"policy": lab, "group": grp, "rl_run": r, "policy_impl": impl, **row})
+    df = pd.DataFrame(rows)
+    if df.duplicated(list(KEY_COLUMNS)).any():
+        raise ValueError("duplicate (label, scenario, split, run, episode) rows")
+    for s in MEMORYLESS_SCENARIOS:
+        hs = set(df.loc[df["scenario"] == s, "config_hash"])
+        if hs != {cfg_hashes[s]}:
+            raise RuntimeError(f"config hash mismatch for {s}: {sorted(hs)}")
+    for m in MEMORYLESS_SUMMARY_METRICS:
+        bad = df[~df[m].astype(float).map(math.isfinite)]
+        if not bad.empty:
+            raise ValueError(f"non-finite {m} in {len(bad)} memoryless rows, e.g. "
+                             f"{bad[['policy', 'scenario', 'episode']].iloc[0].to_dict()}")
+
+    # ---- statistics (exploratory; uncorrected) ------------------------------------
+    avg = st.average_over_runs(df, [_run_label(CANONICAL_LABEL, r) for r in runs], RL_MEAN_LABEL,
+                               metrics=list(MEMORYLESS_SUMMARY_METRICS))
+    avg = avg.assign(group=CANONICAL_LABEL, rl_run=-1, policy_impl=f"rl_mean({CANONICAL_LABEL})")
+    full = pd.concat([df, avg], ignore_index=True)
+    shown = [RL_MEAN_LABEL, *pols]
+
+    comp: list[dict[str, Any]] = []
+    for s in MEMORYLESS_SCENARIOS:
+        for ref in pols:
+            for m in METRICS:
+                a, b = _by_episode(full, RL_MEAN_LABEL, s, m), _by_episode(full, ref, s, m)
+                comp.append({"comparison": "rl_vs_reference", "variant": RL_MEAN_LABEL,
+                             "reference": ref, "scenario": s,
+                             **_stat_row(a.to_numpy(), b.loc[a.index].to_numpy(), m, n_resamples)})
+    for pol in [*shown, *[_run_label(CANONICAL_LABEL, r) for r in runs]]:
+        for m in METRICS:
+            a = _by_episode(full, pol, MEMORYLESS_SCENARIO, m)
+            b = _by_episode(full, pol, MEMORYLESS_PARENT, m)
+            comp.append({"comparison": "shape_effect", "variant": pol, "reference": pol,
+                         "scenario": SHAPE_PAIR,
+                         **_stat_row(a.to_numpy(), b.loc[a.index].to_numpy(), m, n_resamples)})
+    for ref in [g for g in GAP_REFERENCES if g in pols]:
+        for m in ("J", "p95_latency_all_ms"):
+            gm = _by_episode(full, RL_MEAN_LABEL, MEMORYLESS_SCENARIO, m) - \
+                _by_episode(full, ref, MEMORYLESS_SCENARIO, m)
+            gp = _by_episode(full, RL_MEAN_LABEL, MEMORYLESS_PARENT, m) - \
+                _by_episode(full, ref, MEMORYLESS_PARENT, m)
+            comp.append({"comparison": "gap_shift", "variant": RL_MEAN_LABEL, "reference": ref,
+                         "scenario": SHAPE_PAIR,
+                         **_stat_row(gm.to_numpy(), gp.loc[gm.index].to_numpy(), m, n_resamples)})
+    deltas = pd.DataFrame(comp)
+
+    srows = []
+    for (pol, s), g in full.groupby(["policy", "scenario"], sort=False):
+        grp = g["group"].iloc[0]
+        kind = "rl_mean" if pol == RL_MEAN_LABEL else ("run" if grp == CANONICAL_LABEL
+                                                        else "reference")
+        row = {"policy": pol, "group": grp, "kind": kind, "policy_impl": g["policy_impl"].iloc[0],
+               "scenario": s, "n": len(g)}
+        for m in MEMORYLESS_SUMMARY_METRICS:
+            x = g[m].astype(float)
+            row[f"{m}_mean"] = float(x.mean())
+            row[f"{m}_std"] = float(x.std(ddof=1)) if len(x) > 1 else math.nan
+        srows.append(row)
+    summary = pd.DataFrame(srows)
+    xcheck = _cross_check_agent(out, df, MEMORYLESS_PARENT)
+    if xcheck.get("checked") and not xcheck.get("all_match"):
+        say(f"ablate[memoryless]: WARNING {xcheck['n_mismatch']} heldout_medium rows differ "
+            f"from {xcheck['candidate']}")
+
+    # ---- write --------------------------------------------------------------------
+    files: list[Path] = []
+    suite_dir.mkdir(parents=True, exist_ok=True)
+    for fname, t in {"per_seed.csv": df, "summary.csv": summary, "deltas.csv": deltas}.items():
+        t.to_csv(suite_dir / fname, index=False)
+        files.append(suite_dir / fname)
+    if freq_info:
+        files.append(_write_json(suite_dir / "matched_freqs.json", freq_info))
+    md = suite_dir / "summary.md"
+    md.write_text(_memoryless_markdown(summary, deltas, shown, scn_info), encoding="utf-8")
+    files.append(md)
+    plot_df = pd.concat([full[(full["policy"] == p) & (full["scenario"] == s)]
+                         for p in shown for s in MEMORYLESS_SCENARIOS], ignore_index=True)
+    files.append(plot_headroom_bars(
+        plot_df, out / "figures" / "memoryless_J_p95.png",
+        title=f"Memoryless (shape 1.0) vs {MEMORYLESS_PARENT} (shape 0.6): mean ± std over "
+              f"TEST seeds (RL = rl_mean of {len(runs)} runs)"))
+
+    wall = time.perf_counter() - t0
+    suite_manifest = {
+        "suite": "memoryless", "created_utc": _now(), "git_hash": git_hash(),
+        "packages": package_versions(("numpy", "scipy", "pandas", "matplotlib", "churnmaster")),
+        "analysis_plan": MEMORYLESS_ANALYSIS_PLAN, "exploratory": True,
+        "multiple_comparison_correction": "none (exploratory; p-values uncorrected)",
+        "caveat": MEMORYLESS_CAVEAT,
+        "frozen_manifest": {"path": str(manifest_path), "sha256": _sha256_file(manifest_path),
+                            "access": "read-only (check_frozen / check_derived_scenario)"},
+        "scenario": scn_info, "env_hashes": env_hashes, "config_hashes": cfg_hashes,
+        "experiment": str(exp), "root_seed": root,
+        "reward": {"w_L": rw.w_L, "w_M": rw.w_M, "w_R": rw.w_R},
+        "eval_seeds": disjoint, "eval_scenarios": list(MEMORYLESS_SCENARIOS),
+        "canonical": canon_info, "runs": runs,
+        "policies": {c: (tuned_impl if c == GLOBAL_LABEL else c) for c in pols},
+        "tune_selected": {"path": str(tune_selected), "global": selected.get("global")},
+        "matched_freqs": freq_info, "agent_cross_check": xcheck,
+        "stats": {"bootstrap_resamples": n_resamples, "ci_level": 0.95, "bootstrap_seed": 0,
+                  "wilcoxon": "two-sided, zero_method=wilcox", "pairing": "TEST episode",
+                  "rl_mean": "per-seed mean over the canonical runs"},
+        "n_eval_jobs": len(jobs), "workers": workers,
+        "timings_s": {"matched_freqs": round(freq_wall, 1), "eval": round(eval_wall, 1),
+                      "total": round(wall, 1)},
+        "outputs": sorted(str(Path(f).relative_to(out)) for f in files),
+        "per_seed_sha256": _sha256_file(suite_dir / "per_seed.csv"),
+    }
+    mpath = out / MANIFEST_NAME
+    top: dict[str, Any] = {}
+    if mpath.is_file():
+        top = json.loads(mpath.read_text(encoding="utf-8"))
+    top.setdefault("kind", "churnmaster-ablations")
+    top["exploratory"] = True
+    top["updated_utc"] = _now()
+    top["memoryless_analysis_plan"] = MEMORYLESS_ANALYSIS_PLAN
+    top.setdefault("extra_scenarios", {})[MEMORYLESS_SCENARIO] = {
+        k: scn_info[k] for k in ("parent", "env_hash", "config_hash", "toml", "toml_sha256",
+                                 "differs", "in_frozen_manifest")}
+    top.setdefault("suites", {})["memoryless"] = suite_manifest
+    write_manifest(mpath, _clean(top))
+    files.append(mpath)
+    say(f"ablate[memoryless]: wrote {len(files)} files to {out} ({wall:.1f}s)")
+    return AblationReport("memoryless", out, df, deltas, pd.DataFrame(), summary, {},
+                          suite_manifest, files, wall, 0.0, eval_wall)

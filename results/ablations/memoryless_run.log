@@ -1,0 +1,35 @@
+﻿ablate[memoryless]: measuring matched_random frequencies for heldout_memoryless (VALIDATION run 0, 5 episodes x 3 Q-tables)
+ablate[memoryless]: evaluating 9 labels x 2 scenarios x 20 TEST seeds = 360 episodes (workers=8)
+ablate[memoryless]: evaluation done in 28.4s
+ablate[memoryless]: wrote 7 files to E:\oss\AI2(course)\results\ablations (31.1s)
+exploratory; p uncorrected; RL = rl_mean over the canonical runs, TEST seeds
+  tuned_heuristic   heldout_memoryless  J=0.9725 p95=  471.0 success=0.9999 pings/h=27.5
+  kademlia_epoch    heldout_memoryless  J=0.9619 p95=  480.3 success=0.9997 pings/h=380.9
+  matched_random    heldout_memoryless  J=0.9544 p95=  737.4 success=0.9964 pings/h=28.3
+  never_replace     heldout_memoryless  J=0.9438 p95=  780.6 success=0.9912 pings/h=0.0
+  uniform_random    heldout_memoryless  J=0.9556 p95=  552.7 success=0.9999 pings/h=436.5
+  oracle_heuristic  heldout_memoryless  J=0.9724 p95=  428.3 success=0.9999 pings/h=23.4
+  tuned_heuristic   heldout_medium      J=0.9741 p95=  444.6 success=0.9999 pings/h=19.4
+  kademlia_epoch    heldout_medium      J=0.9616 p95=  459.8 success=0.9999 pings/h=389.0
+  matched_random    heldout_medium      J=0.9610 p95=  676.2 success=0.9994 pings/h=24.5
+  never_replace     heldout_medium      J=0.9463 p95=  758.7 success=0.9928 pings/h=0.0
+  uniform_random    heldout_medium      J=0.9566 p95=  522.0 success=1.0000 pings/h=435.3
+  oracle_heuristic  heldout_medium      J=0.9733 p95=  394.7 success=0.9999 pings/h=17.9
+  rl_mean           heldout_medium      J=0.9710 p95=  549.3 success=0.9999 pings/h=20.0
+  rl_mean           heldout_memoryless  J=0.9700 p95=  557.3 success=0.9997 pings/h=27.9
+  rl_vs_reference  rl_mean vs tuned_heuristic  heldout_memoryless                 dJ=-0.0024 [-0.0034, -0.0015] p=9.54e-06
+  rl_vs_reference  rl_mean vs kademlia_epoch   heldout_memoryless                 dJ=+0.0082 [+0.0074, +0.0088] p=1.91e-06
+  rl_vs_reference  rl_mean vs matched_random   heldout_memoryless                 dJ=+0.0156 [+0.0090, +0.0255] p=1.91e-06
+  rl_vs_reference  rl_mean vs never_replace    heldout_memoryless                 dJ=+0.0262 [+0.0138, +0.0455] p=1.91e-06
+  rl_vs_reference  rl_mean vs uniform_random   heldout_memoryless                 dJ=+0.0144 [+0.0135, +0.0154] p=1.91e-06
+  rl_vs_reference  rl_mean vs oracle_heuristic heldout_memoryless                 dJ=-0.0024 [-0.0029, -0.0019] p=1.91e-06
+  rl_vs_reference  rl_mean vs tuned_heuristic  heldout_medium                     dJ=-0.0031 [-0.0043, -0.0021] p=4.77e-05
+  rl_vs_reference  rl_mean vs kademlia_epoch   heldout_medium                     dJ=+0.0094 [+0.0086, +0.0102] p=1.91e-06
+  rl_vs_reference  rl_mean vs matched_random   heldout_medium                     dJ=+0.0100 [+0.0075, +0.0128] p=1.91e-06
+  rl_vs_reference  rl_mean vs never_replace    heldout_medium                     dJ=+0.0246 [+0.0154, +0.0367] p=1.91e-06
+  rl_vs_reference  rl_mean vs uniform_random   heldout_medium                     dJ=+0.0143 [+0.0131, +0.0155] p=1.91e-06
+  rl_vs_reference  rl_mean vs oracle_heuristic heldout_medium                     dJ=-0.0023 [-0.0029, -0.0018] p=9.54e-06
+  gap_shift        rl_mean vs tuned_heuristic  heldout_memoryless-heldout_medium  dJ=+0.0007 [-0.0004, +0.0018] p=0.261
+  gap_shift        rl_mean vs kademlia_epoch   heldout_memoryless-heldout_medium  dJ=-0.0012 [-0.0021, -0.0003] p=0.0172
+  gap_shift        rl_mean vs matched_random   heldout_memoryless-heldout_medium  dJ=+0.0056 [-0.0021, +0.0163] p=0.571
+ablate[memoryless]: wall=31.1s (eval 28.4s); wrote 7 files to E:\oss\AI2(course)\results\ablations

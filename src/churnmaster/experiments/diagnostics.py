@@ -489,11 +489,12 @@ class DiagnosticsReport:
 
 
 def _frozen_loader(configs_dir: Path, experiment_path: Path | None,
-                   manifest_path: Path) -> Callable[[str], Any]:
+                   manifest_path: Path,
+                   extra_scenario_dirs: tuple[str, ...] = ()) -> Callable[[str], Any]:
     """ConfigLoader with the manifest's tuned env overrides applied (if any)."""
     from churnmaster.experiments.headroom import TunedLoader
 
-    loader = ConfigLoader(configs_dir, experiment_path)
+    loader = ConfigLoader(configs_dir, experiment_path, tuple(extra_scenario_dirs))
     if manifest_path.is_file():
         overrides = read_manifest(manifest_path).get("env_overrides") or {}
         if overrides:

@@ -1,0 +1,26 @@
+# heldout_memoryless (Task 12.3, optional; exploratory, unseen in training):
+# heldout_medium with EXPONENTIAL sessions (Weibull shape 1.0 = constant hazard).
+#
+# Every other value equals heldout_medium (share 0.45, stable session mean 2 h, flaky
+# session mean 10 min, downtime mean 12 min, burn-in 2 h). The churn model draws
+# session lengths as Weibull(shape) * mean / Gamma(1 + 1/shape), so the MEAN session
+# lengths (and hence the online fraction m / (m + downtime)) are unchanged; only the
+# hazard shape changes. With shape 0.6 (all frozen scenarios) the hazard decreases with
+# session age, so a long-lived contact is more likely to stay online; with shape 1.0 a
+# contact's age carries no information about its remaining lifetime.
+#
+# Lives in configs/ablations/, NOT configs/scenarios/: headroom and reproduce freeze
+# every scenario file in configs/scenarios/, so keeping it here leaves the canonical
+# pipeline unchanged. Only `ablate --suite memoryless` loads it.
+#
+# Not part of the frozen env manifest (results/headroom/manifest.json); the ablation
+# suite checks that its env differs from frozen heldout_medium only in name and
+# weibull_shape and records its hashes in results/ablations/manifest.json.
+[scenario]
+name = "heldout_memoryless"
+stable_share = 0.45
+stable_session_mean_s = 7200.0
+flaky_session_mean_s = 600.0
+downtime_mean_s = 720.0
+weibull_shape = 1.0
+burn_in_s = 7200

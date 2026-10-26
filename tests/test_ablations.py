@@ -57,7 +57,7 @@ def short_exp(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def loader(short_exp):
-    return ConfigLoader(CONFIGS, short_exp)
+    return ConfigLoader(CONFIGS, short_exp, ("ablations",))
 
 
 @pytest.fixture(scope="module")
@@ -354,7 +354,7 @@ def test_default_path_reproduces_canonical_run0():
     man = REPO / "results" / "headroom" / "manifest.json"
     if not q.is_file() or not man.is_file():
         pytest.skip("canonical results not present")
-    ld = _frozen_loader(CONFIGS, CONFIGS / "experiments" / "train.toml", man)
+    ld = _frozen_loader(CONFIGS, CONFIGS / "experiments" / "train.toml", man, ("ablations",))
     st = TrainSettings.from_config(ld("stable"), ("stable", "high_churn"), gamma=0.8,
                                    alpha_min=0.02)
     o = train_agent(TrainSpec(ld, st, 0))
@@ -539,3 +539,221 @@ def test_reward_suite_rejects_unknown_or_canonical_cell(tmp_path, short_exp, man
         with pytest.raises(ValueError, match="cell"):
             run_reward_suite(CONFIGS, manifest, tmp_path / "x", cells=bad,
                              experiment_path=short_exp, episodes=2)
+
+
+# --------------------------------------------------------------------------- #
+# Memoryless held-out scenario (task 12.3, Requirement 28.3)
+# --------------------------------------------------------------------------- #
+
+import dataclasses  # noqa: E402
+import hashlib  # noqa: E402
+
+from churnmaster.experiments.ablations import (MEMORYLESS_ANALYSIS_PLAN,  # noqa: E402
+                                               MEMORYLESS_PARENT, MEMORYLESS_POLICIES,
+                                               MEMORYLESS_SCENARIO, SUITES,
+                                               check_derived_scenario, run_memoryless_suite)
+from churnmaster.experiments.runner import FrozenEnvError  # noqa: E402
+from churnmaster.sim.churn import weibull_scale  # noqa: E402
+
+#: Canonical results the memoryless suite must never modify.
+CANONICAL_FILES = [REPO / "results" / p for p in (
+    "headroom/manifest.json", "matched/freqs.json", "tune/selected.json", "eval/summary.csv",
+    "eval/per_seed.csv", "train/final/run0/q_final.npy")]
+
+
+def _digests(paths):
+    return {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
+
+
+def test_memoryless_config_only_changes_hazard_shape(loader):
+    m, p = loader(MEMORYLESS_SCENARIO), loader(MEMORYLESS_PARENT)
+    assert m.scenario.name == MEMORYLESS_SCENARIO and m.scenario.weibull_shape == 1.0
+    assert p.scenario.weibull_shape == 0.6
+    assert dataclasses.replace(m.scenario, name=p.scenario.name, weibull_shape=0.6) == p.scenario
+    assert m.sim == p.sim and m.reward == p.reward and m.root_seed == p.root_seed
+    # the Weibull scale keeps the mean: shape 1.0 is the exponential with the same mean
+    for mean in (m.scenario.stable_session_mean_s, m.scenario.flaky_session_mean_s):
+        assert weibull_scale(mean, 1.0) == pytest.approx(mean)
+
+
+def test_check_derived_scenario(loader, manifest):
+    m, p = loader(MEMORYLESS_SCENARIO), loader(MEMORYLESS_PARENT)
+    before = manifest.read_bytes()
+    info = check_derived_scenario(manifest, m, p)
+    assert manifest.read_bytes() == before
+    assert info["config_hash"] == config_hash(m) and info["env_hash"] == env_config_hash(m)
+    assert info["parent_env_hash"] == env_config_hash(p) != info["env_hash"]
+    assert info["differs"] == {"name": [MEMORYLESS_PARENT, MEMORYLESS_SCENARIO],
+                               "weibull_shape": [0.6, 1.0]}
+    assert info["in_frozen_manifest"] is False
+    bad = dataclasses.replace(m, scenario=dataclasses.replace(m.scenario, stable_share=0.5))
+    with pytest.raises(FrozenEnvError, match="more than"):
+        check_derived_scenario(manifest, bad, p)
+    bad_sim = dataclasses.replace(m, sim=dataclasses.replace(m.sim, k=m.sim.k + 1))
+    with pytest.raises(FrozenEnvError):
+        check_derived_scenario(manifest, bad_sim, p)
+
+
+def test_memoryless_plan_and_cli_wiring(capsys):
+    from churnmaster.cli import build_parser, main
+
+    assert "memoryless" in SUITES
+    assert "NO multiple-comparison correction" in MEMORYLESS_ANALYSIS_PLAN
+    assert "weibull_shape = 1.0" in MEMORYLESS_ANALYSIS_PLAN
+    assert "Pre-registered" not in MEMORYLESS_ANALYSIS_PLAN
+    assert "Memoryless outputs" not in MEMORYLESS_ANALYSIS_PLAN
+    assert "memoryless" not in ANALYSIS_PLAN.lower()
+    assert set(MEMORYLESS_POLICIES) >= {"tuned_heuristic", "kademlia_epoch", "matched_random",
+                                        "never_replace", "uniform_random"}
+    args = build_parser().parse_args(["ablate", "--suite", "memoryless", "--workers", "2"])
+    assert args.suite == "memoryless" and args.func.__name__ == "cmd_ablate"
+    assert main(["ablate", "--suite", "memoryless", "--episodes", "5"]) == 1
+    assert "--episodes does not apply" in capsys.readouterr().err
+
+
+def test_real_memoryless_scenario_derives_from_frozen_heldout_medium():
+    """Against the canonical frozen manifest (read-only); the scenario stays out of it."""
+    from churnmaster.experiments.diagnostics import _frozen_loader
+
+    man = REPO / "results" / "headroom" / "manifest.json"
+    if not man.is_file():
+        pytest.skip("canonical frozen manifest not present")
+    before = _digests([man])
+    ld = _frozen_loader(CONFIGS, CONFIGS / "experiments" / "train.toml", man, ("ablations",))
+    info = check_derived_scenario(man, ld(MEMORYLESS_SCENARIO), ld(MEMORYLESS_PARENT))
+    assert info["in_frozen_manifest"] is False
+    frozen = json.loads(man.read_text(encoding="utf-8"))["env_hashes"]
+    assert MEMORYLESS_SCENARIO not in frozen and info["parent_env_hash"] == frozen[MEMORYLESS_PARENT]
+    assert _digests([man]) == before
+    rec = REPO / "results" / "ablations" / "manifest.json"
+    if rec.is_file():
+        m = json.loads(rec.read_text(encoding="utf-8"))
+        if "memoryless" in m.get("suites", {}):
+            sc = m["suites"]["memoryless"]["scenario"]
+            assert sc["config_hash"] == info["config_hash"]
+            assert sc["env_hash"] == info["env_hash"]
+            assert m["extra_scenarios"][MEMORYLESS_SCENARIO]["config_hash"] == info["config_hash"]
+
+
+def test_memoryless_suite_end_to_end(tmp_path, loader, short_exp, manifest, trained):
+    can = trained["canonical"].final.save(tmp_path / "canon" / "run0" / "q_final.npy")
+    sel = tmp_path / "selected.json"
+    sel.write_text(json.dumps({"global": "f=2,po=0,rs=1,ps=0,tg=all", "per_scenario": {}}),
+                   encoding="utf-8")
+    out = tmp_path / "abl"
+    out.mkdir()
+    prior = {"kind": "churnmaster-ablations", "analysis_plan": ANALYSIS_PLAN,
+             "suites": {"agent": {"suite": "agent", "marker": 1},
+                        "reward": {"suite": "reward", "marker": 2}}}
+    (out / "manifest.json").write_text(json.dumps(prior), encoding="utf-8")
+    canon_before = _digests(CANONICAL_FILES)
+    man_before = manifest.read_bytes()
+    common = dict(experiment_path=short_exp, runs=(0,), n_seeds=2, canonical_q=[can],
+                  tune_selected=sel, matched_freqs=REPO / "results" / "matched" / "freqs.json",
+                  freq_seeds=1, workers=1, n_resamples=200)
+    rep = run_memoryless_suite(CONFIGS, manifest, out, **common)
+    assert manifest.read_bytes() == man_before                       # frozen manifest untouched
+    assert _digests(CANONICAL_FILES) == canon_before                  # canonical results untouched
+    d = out / "memoryless"
+    for f in ("per_seed.csv", "summary.csv", "deltas.csv", "summary.md", "matched_freqs.json"):
+        assert (d / f).is_file()
+    assert (out / "figures" / "memoryless_J_p95.png").is_file()
+    ps = pd.read_csv(d / "per_seed.csv")
+    assert set(ps["split"]) == {"test"} and set(ps["run"]) == {0} and set(ps["episode"]) == {0, 1}
+    assert set(ps["scenario"]) == {MEMORYLESS_SCENARIO, MEMORYLESS_PARENT}
+    assert set(ps["policy"]) == {"canonical:run0", *MEMORYLESS_POLICIES}
+    assert len(ps) == 7 * 2 * 2
+    hm = {s: config_hash(loader(s)) for s in (MEMORYLESS_SCENARIO, MEMORYLESS_PARENT)}
+    for s, h in hm.items():
+        assert set(ps.loc[ps["scenario"] == s, "config_hash"]) == {h}
+    # same seeds, different hazard shape -> different churn traces
+    a = ps[(ps["policy"] == "never_replace")].set_index(["scenario", "episode"])["trace_hash"]
+    assert a[(MEMORYLESS_SCENARIO, 0)] != a[(MEMORYLESS_PARENT, 0)]
+    dl = pd.read_csv(d / "deltas.csv")
+    assert set(dl["comparison"]) == {"rl_vs_reference", "shape_effect", "gap_shift"}
+    assert len(dl[dl["comparison"] == "rl_vs_reference"]) == 2 * 6 * 4
+    assert len(dl[dl["comparison"] == "gap_shift"]) == 3 * 2
+    sm_ = pd.read_csv(d / "summary.csv")
+    assert {"rl_mean", "run", "reference"} == set(sm_["kind"])
+    # matched_random: the canonical freqs.json does not match the short env -> measured
+    fq = json.loads((d / "matched_freqs.json").read_text(encoding="utf-8"))
+    assert set(fq) == {MEMORYLESS_SCENARIO, MEMORYLESS_PARENT}
+    assert all(v["source"].startswith("measured") for v in fq.values())
+    assert sum(fq[MEMORYLESS_SCENARIO]["counts"]["cand"]) > 0
+    # manifest: read-modify-write keeps the other suites, records the scenario hashes
+    m = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert m["suites"]["agent"] == prior["suites"]["agent"]
+    assert m["suites"]["reward"] == prior["suites"]["reward"]
+    assert m["analysis_plan"] == ANALYSIS_PLAN
+    sm = m["suites"]["memoryless"]
+    assert sm["analysis_plan"] == MEMORYLESS_ANALYSIS_PLAN == m["memoryless_analysis_plan"]
+    assert sm["scenario"]["config_hash"] == hm[MEMORYLESS_SCENARIO]
+    assert sm["scenario"]["scenario"]["weibull_shape"] == 1.0
+    assert len(sm["scenario"]["toml_sha256"]) == 64
+    assert m["extra_scenarios"][MEMORYLESS_SCENARIO]["config_hash"] == hm[MEMORYLESS_SCENARIO]
+    assert sm["eval_seeds"]["overlap"] is False
+    assert sm["multiple_comparison_correction"].startswith("none")
+    assert sm["agent_cross_check"]["checked"] is False
+    assert rep.summary.equals(sm_) or len(rep.summary) == len(sm_)
+    md = (d / "summary.md").read_text(encoding="utf-8")
+    assert "rl_mean" in md and "uncorrected" in md
+    with pytest.raises(ValueError, match="overwrite"):
+        run_memoryless_suite(CONFIGS, manifest, out, **common)
+
+
+@pytest.mark.parametrize("bad", ["results/eval", "results/matched", "results/headroom",
+                                 "results/reproduce_full"])
+def test_memoryless_suite_refuses_canonical_out(bad, short_exp, manifest, monkeypatch):
+    monkeypatch.chdir(REPO)
+    with pytest.raises(ValueError):
+        run_memoryless_suite(CONFIGS, manifest, bad, experiment_path=short_exp)
+
+
+def test_memoryless_suite_rejects_bad_policies(tmp_path, short_exp, manifest):
+    for bad in (["nope"], [], ["kademlia_epoch", "kademlia_epoch"]):
+        with pytest.raises(ValueError, match="policy"):
+            run_memoryless_suite(CONFIGS, manifest, tmp_path / "x", policies=bad,
+                                 experiment_path=short_exp)
+
+
+@pytest.mark.slow
+def test_memoryless_recorded_rows_reproduce():
+    """Re-run TEST episode 0 with the real configs; it must match the recorded per_seed rows."""
+    rec = REPO / "results" / "ablations" / "memoryless" / "per_seed.csv"
+    man = REPO / "results" / "headroom" / "manifest.json"
+    if not rec.is_file() or not man.is_file():
+        pytest.skip("memoryless results not present")
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        rep = run_memoryless_suite(CONFIGS, man, Path(tmp) / "abl", n_seeds=2,
+                                   canonical_q=[REPO / f"results/train/final/run{r}/q_final.npy"
+                                                for r in range(3)],
+                                   tune_selected=REPO / "results/tune/selected.json",
+                                   matched_freqs=REPO / "results/matched/freqs.json",
+                                   workers=4, n_resamples=200)
+    old = pd.read_csv(rec).set_index(["policy", "scenario", "episode"])
+    for _, r in rep.per_seed.iterrows():
+        o = old.loc[(r["policy"], r["scenario"], r["episode"])]
+        assert o["trace_hash"] == r["trace_hash"] and o["summary_hash"] == r["summary_hash"]
+
+
+def test_memoryless_scenario_kept_out_of_frozen_scenario_dir():
+    """headroom / reproduce freeze every file in configs/scenarios; the ablation scenario
+    must live in configs/ablations so the canonical pipeline is unchanged (task 12.3)."""
+    from churnmaster.experiments.ablations import ABLATION_CONFIG_DIR
+    from churnmaster.experiments.headroom import scenario_names
+
+    assert ABLATION_CONFIG_DIR == "ablations"
+    assert scenario_names(CONFIGS) == ["bursty", "heldout_medium", "high_churn", "stable"]
+    assert not (CONFIGS / "scenarios" / f"{MEMORYLESS_SCENARIO}.toml").exists()
+    assert (CONFIGS / ABLATION_CONFIG_DIR / f"{MEMORYLESS_SCENARIO}.toml").is_file()
+    from churnmaster.config import ConfigError
+
+    with pytest.raises(ConfigError, match="cannot read"):
+        ConfigLoader(CONFIGS)(MEMORYLESS_SCENARIO)          # default loader: frozen set only
+    extra = ConfigLoader(CONFIGS, None, (ABLATION_CONFIG_DIR,))
+    assert extra(MEMORYLESS_SCENARIO).scenario.weibull_shape == 1.0
+    # frozen scenarios always resolve to configs/scenarios, even with extra dirs
+    assert extra.scenario_path(MEMORYLESS_PARENT) == CONFIGS / "scenarios" / f"{MEMORYLESS_PARENT}.toml"
+    assert config_hash(extra(MEMORYLESS_PARENT)) == config_hash(ConfigLoader(CONFIGS)(MEMORYLESS_PARENT))
