@@ -1,10 +1,10 @@
 # ChurnMaster: Learning Routing-Table Maintenance for a Kademlia-like DHT under Churn
 
-All numbers in this report come from the artifacts in `results/`. Figures are referenced at `../results/figures/*.png`. `results/` is gitignored, so the figures are regenerated with `python -m churnmaster reproduce --figures-only`. Unless stated otherwise, intervals are paired-bootstrap 95% percentile CIs (10,000 resamples) and p-values are Wilcoxon signed-rank.
+All numbers in this report come from the artifacts in `results/`. Only `results/figures/` is tracked in Git: the report figures (`../results/figures/*.png`), their markdown tables (`results/figures/tables/`) and the exploratory-ablation assets (`results/figures/ablations/`). Everything else under `results/` is a local artifact (gitignored). Paths marked *(local artifact)* are not in a clean clone; the command that regenerates each one is given next to it, and the numbers needed here are quoted inline. Sections 1–9 report the pre-registered study and its single locked evaluation. Section 10 reports post-hoc exploratory ablations on separate seeds; they do not change any primary result or hypothesis verdict. Unless stated otherwise, intervals are paired-bootstrap 95% percentile CIs (10,000 resamples) and p-values are Wilcoxon signed-rank.
 
 ## 1. Abstract
 
-We train a tabular Q-learning agent to maintain the routing table of one node in a simulated 128-node Kademlia-like DHT under churn. At every 30 s epoch it picks KEEP, PROBE or REPLACE per bucket, using only locally observable information. We evaluate on 20 locked seeds in three scenarios, one of them (heldout_medium) never seen in training or tuning. The learned policy (mean of 3 independent runs) beats Kademlia-style epoch maintenance on the combined score J in every scenario (ΔJ +0.0085 to +0.0097, Holm-adjusted p ≤ 1.7·10⁻⁵) while sending 87–98% fewer pings. It also beats a random policy with matched action frequencies (H1 pass), which shows that the gain comes from targeting decisions, not from acting less. These results hold on the unseen scenario. The learned policy does not match a tuned 32-configuration heuristic, however. It is slightly but significantly worse on J in all three scenarios (ΔJ −0.0020 to −0.0030), and its p95 lookup latency is 18–38% higher than the best baseline's (H3 fail). Non-inferiority hypotheses H2/H4 are inconclusive. The environment leaves little room above the heuristic: even with no maintenance at all, lookup success is ≥98%, and the tuned heuristic already matches or exceeds a ground-truth oracle on J.
+We train a tabular Q-learning agent to maintain the routing table of one node in a simulated 128-node Kademlia-like DHT under churn. At every 30 s epoch it picks KEEP, PROBE or REPLACE per bucket, using only locally observable information. We evaluate on 20 locked seeds in three scenarios, one of them (heldout_medium) never seen in training or tuning. The learned policy (mean of 3 independent runs) beats Kademlia-style epoch maintenance on the combined score J in every scenario (ΔJ +0.0085 to +0.0097, Holm-adjusted p ≤ 1.7·10⁻⁵) while sending 87–98% fewer pings. It also beats a random policy with matched action frequencies (H1 pass), which shows that the gain comes from targeting decisions, not from acting less. These results hold on the unseen scenario. The learned policy does not match a tuned 32-configuration heuristic, however. It is slightly but significantly worse on J in all three scenarios (ΔJ −0.0020 to −0.0030), and its p95 lookup latency is 18–38% higher than the best baseline's (H3 fail). Non-inferiority hypotheses H2/H4 are inconclusive. The environment leaves little room above the heuristic: even with no maintenance at all, lookup success is ≥98%, and the tuned heuristic already matches or exceeds a ground-truth oracle on J. Separately from this primary evaluation, exploratory ablations on different seeds without multiple-comparison correction (§10) suggest the following. Performance depends on the reward signal. A myopic learner (γ = 0) does worse. Raising the latency weight lowers RL's p95 at the price of more pings, but it does not close the J gap to the tuned heuristic in high_churn. The results barely change under memoryless sessions.
 
 ## 2. Problem and research question
 
@@ -35,6 +35,8 @@ Churn is modeled per node. Each node is either stable or flaky. It alternates We
 | high_churn | 0.30 | 1 h | 5 min | 10 min | train, tune, eval |
 | heldout_medium | 0.45 | 2 h | 10 min | 12 min | eval only (unseen) |
 | bursty | 0.50 | 2 h | 15 min | 15 min | configured, not evaluated (Task 11) |
+
+A fifth scenario, heldout_memoryless (heldout_medium with Weibull shape 1.0, i.e. exponential sessions), lives in `configs/ablations/` and is used only by the exploratory §10.3. It is deliberately kept out of `configs/scenarios/`, the directory whose files are frozen into the env manifest, so the canonical pipeline is unchanged.
 
 **Keyed randomness.** All randomness that must be policy-independent comes from a pure hash of the event identity (splitmix64 over root, purpose, and IDs): loss, jitter, background rebuilds, and F's bootstrap. Two policies that send the same ping, keyed by epoch, bucket, destination and kind, get the same outcome. Churn traces and workloads come from per-episode `SeedSequence` streams and are identical across policies (tested via trace and workload hashes).
 
@@ -102,11 +104,11 @@ Fairness rules. All epoch-mode policies get identical churn traces, workloads, d
 
 All deviations were decided before the locked evaluation was run. In chronological order:
 
-a. **Headroom gates redefined (after checkpoint 5.17, user decision).** The original gates required a success-rate gain in percentage points over never_replace. In the checkpoint run (`results/checkpoint_5_17/`), never_replace already reached 98.99% success in high_churn, and the best policy (oracle, 99.87%) gained under 1 pp, so success-based gates could not discriminate. The gates were changed to J or p95 latency. G1: in high_churn, the best of {kademlia_epoch, always_replace, oracle} beats never_replace with ΔJ ≥ 0.01 and CI lo > 0, or with ≥20% p95 reduction and CI lo > 0. G2: oracle beats kademlia_epoch with ΔJ ≥ 0.01, or uses ≤60% of its pings at ΔJ ≥ −0.005.
+a. **Headroom gates redefined (after checkpoint 5.17, user decision).** The original gates required a success-rate gain in percentage points over never_replace. In the checkpoint run (`results/checkpoint_5_17/`, *local artifact* from the pre-gate checkpoint, not regenerated by any current command; the figures quoted here and in (b) are all that is used), never_replace already reached 98.99% success in high_churn, and the best policy (oracle, 99.87%) gained under 1 pp, so success-based gates could not discriminate. The gates were changed to J or p95 latency. G1: in high_churn, the best of {kademlia_epoch, always_replace, oracle} beats never_replace with ΔJ ≥ 0.01 and CI lo > 0, or with ≥20% p95 reduction and CI lo > 0. G2: oracle beats kademlia_epoch with ΔJ ≥ 0.01, or uses ≤60% of its pings at ΔJ ≥ −0.005.
 
 b. **Maintenance cost weights halved (after reward diagnostics, user decision).** The weights went from w_M 0.2 / w_R 0.3 to 0.1 / 0.15. The checkpoint-5.17 summary, whose non-J metrics are identical to the final headroom run and whose J differs only for policies that send messages (we infer it used the original weights), shows the problem: in high_churn, always_replace scored J 0.9295, *below* never_replace's 0.9310, and kademlia_epoch was only 0.9475. Maintenance was priced so high that it barely paid off. The headroom gates were re-run with the new weights. The env hash excludes reward settings, so the frozen environment was unchanged.
 
-c. **Diagnostics re-run with 60 episodes.** At the official 20 episodes, the reward-sanity test for dead incumbents lacked power (§7.2). It was re-run with 60 episodes per scenario (`results/diagnostics_60/`). Coverage is still reported from the official 20-episode run.
+c. **Diagnostics re-run with 60 episodes.** At the official 20 episodes, the reward-sanity test for dead incumbents lacked power (§7.2). It was re-run with 60 episodes per scenario (`results/diagnostics_60/`, *local artifact*; regenerate with `diagnostics --episodes 60 --out results/diagnostics_60`). Coverage is still reported from the official 20-episode run.
 
 d. **Privileged heuristic fallback.** heldout_medium has no tuning data by design, so `tuned_heuristic_privileged` falls back to the global config there (tag "priv*"; recorded as `privileged_fallback` in the eval manifest).
 
@@ -134,7 +136,7 @@ g. **I4 reference (interpretation).** Under greedy tie-breaking, the untrained e
 | high_churn | oracle_heuristic | 0.9987 | 431.4 | 33.15 | 0.9733 |
 | high_churn | kademlia_std (no-dp) | 0.9951 | 559.2 | 2526.9 | 0.8954 |
 
-Both gates pass on the J route (`results/headroom/gates.json`). G1's best candidate is the oracle: ΔJ vs never_replace +0.0424 [+0.0342, +0.0502], p95 reduced by 581.0 ms (57.2%). kademlia_epoch (+0.0274 [+0.0204, +0.0344]) and always_replace (+0.0182 [+0.0105, +0.0256]) pass on their own as well. G2: oracle − kademlia_epoch ΔJ +0.0150 [+0.0119, +0.0188] at a ping ratio of 0.094 (33.15 vs 352.95 pings/h). No G1 fallback tuning was needed. The env hashes for all four scenarios were frozen. See `../results/figures/headroom_J_p95.png`.
+Both gates pass on the J route (`results/figures/tables/headroom_gates.md`; source `results/headroom/gates.json`, *local artifact* written by `headroom`). G1's best candidate is the oracle: ΔJ vs never_replace +0.0424 [+0.0342, +0.0502], p95 reduced by 581.0 ms (57.2%). kademlia_epoch (+0.0274 [+0.0204, +0.0344]) and always_replace (+0.0182 [+0.0105, +0.0256]) pass on their own as well. G2: oracle − kademlia_epoch ΔJ +0.0150 [+0.0119, +0.0188] at a ping ratio of 0.094 (33.15 vs 352.95 pings/h). No G1 fallback tuning was needed. The env hashes for all four scenarios were frozen. See `../results/figures/headroom_J_p95.png`.
 
 ![Headroom J and p95](../results/figures/headroom_J_p95.png)
 
@@ -253,7 +255,7 @@ Per-scenario success-vs-pings scatters: `../results/figures/eval_success_vs_ping
 
 All 9 tests are significant after Holm correction: 6 in RL's favour and 3 against it. RL sends 98.1% (stable), 87.1% (high_churn) and 93.9% (heldout_medium) fewer pings than kademlia_epoch. Its paired ping differences are −376.8, −294.2 and −346.1 pings/h. Paired success differences are tiny: |Δ| ≤ 0.2 pp in every per-run comparison against kademlia_epoch and the tuned heuristic.
 
-**Per-run consistency** (`results/eval/per_run.csv`). Every run individually beats kademlia_epoch and matched_random on J in every scenario, with CIs excluding 0. Against the tuned heuristic, all 9 per-run differences are negative. 8 have CIs excluding 0. The exception is run 2 in high_churn: −0.0010 [−0.0025, +0.0004], p = 0.19. On p95 vs kademlia_epoch, three cells are not significantly different: run 2 in high_churn (−27.1 ms [−76.5, +25.2]), run 2 in heldout_medium (+23.8 ms [−10.8, +59.1]), and run 1 in high_churn (+27.6 ms [−3.3, +64.2]). The other six run × scenario cells are 38.2–91.6 ms slower, with CIs excluding 0.
+**Per-run consistency** (`results/eval/per_run.csv`, *local artifact*; `reproduce --full` regenerates it as `OUT/eval/per_run.csv`). Every run individually beats kademlia_epoch and matched_random on J in every scenario, with CIs excluding 0. Against the tuned heuristic, all 9 per-run differences are negative. 8 have CIs excluding 0. The exception is run 2 in high_churn: −0.0010 [−0.0025, +0.0004], p = 0.19. On p95 vs kademlia_epoch, three cells are not significantly different: run 2 in high_churn (−27.1 ms [−76.5, +25.2]), run 2 in heldout_medium (+23.8 ms [−10.8, +59.1]), and run 1 in high_churn (+27.6 ms [−3.3, +64.2]). The other six run × scenario cells are 38.2–91.6 ms slower, with CIs excluding 0.
 
 ### 7.6 Hypotheses
 
@@ -273,10 +275,10 @@ H5's "pass" means the runs agree in sign with the pooled result. Against the tun
 
 **What RL learned.** The agent learned a frugal policy: act on repeated failures in the buckets that matter most, and otherwise KEEP. This places it in the same low-message regime as the heuristic and the oracle (7–44 pings/h versus 338–384 for kademlia_epoch and 2,500–4,000 for kademlia_std). Within that regime it is much better than chance. matched_random has the same action frequencies (93–99% KEEP), but its p95 (643.6–729.6 ms) is the worst of any epoch-mode policy except never_replace, and its seed variance is large. RL beats it by ΔJ ≈ 0.013–0.015, so the learned state→action mapping carries real information. The result transfers to heldout_medium with effect sizes similar to the training scenarios.
 
-**Why RL trails the tuned heuristic.** We see four contributing explanations. None has been isolated yet; these are hypotheses for Task 12.
+**Why RL trails the tuned heuristic.** We see four contributing explanations. The locked evaluation cannot separate them. The exploratory ablations in §10 probe 1–3 on separate seeds, without multiple-comparison correction. They narrow the picture but do not establish any single cause.
 
-1. *Light latency weight.* With w_L = 0.3, slowing one lookup from 300 ms to 600 ms adds only 0.045 to its loss, while one successful REPLACE costs 0.1 + 0.15 = 0.25. The tuned heuristic relies on the RTT swap rule (rs=1 in all top-5 configs; the default, with rs=0, ranks 22nd), which replaces live but slow contacts. Under this reward, the reward-sanity diagnostic finds that KEEP beats REPLACE for live incumbents on average (+0.200 return). The RL p95 gap (18–38%) is consistent with the agent rarely making latency-motivated swaps. A w_L sweep is the direct test.
-2. *Coarse, aliased state.* One bit of "candidate faster" and three age bins pool very different situations. Since this is a POMDP, aliased states average over hidden outcomes, and the greedy policy often splits (e.g. 41–59% REPLACE in some cells), which suggests near-ties.
+1. *Light latency weight.* With w_L = 0.3, slowing one lookup from 300 ms to 600 ms adds only 0.045 to its loss, while one successful REPLACE costs 0.1 + 0.15 = 0.25. The tuned heuristic relies on the RTT swap rule (rs=1 in all top-5 configs; the default, with rs=0, ranks 22nd), which replaces live but slow contacts. Under this reward, the reward-sanity diagnostic finds that KEEP beats REPLACE for live incumbents on average (+0.200 return). The RL p95 gap (18–38%) is consistent with the agent rarely making latency-motivated swaps. *Exploratory follow-up (§10.2):* retraining with a higher w_L, still scored under the canonical weights, moved RL's p95 in the predicted direction. At w_M = 0.1, p95 fell monotonically with w_L in all three scenarios (4 points, descriptive only). Going from w_L = 0.3 to 1.0 changed p95 by −130.5 / −22.2 / −95.6 ms (stable / high_churn / heldout_medium), with uncorrected CIs excluding 0. The cost was 74–100 instead of 8–44 pings/h. The p95 gap to the tuned heuristic narrowed, but in high_churn it stayed positive (+47.7 ms [+9.5, +92.9]). RL's J stayed below the tuned heuristic's in every cell and scenario except one: w_L 0.6 / w_M 0.05 on stable, which was picked post hoc out of 36 cell-scenario combinations. So the latency weight plausibly accounts for part of the p95 gap. It does not account for the J gap in high_churn.
+2. *Coarse, aliased state.* One bit of "candidate faster" and three age bins pool very different situations. Since this is a POMDP, aliased states average over hidden outcomes, and the greedy policy often splits (e.g. 41–59% REPLACE in some cells), which suggests near-ties. *Exploratory follow-up (§10.1):* removing single features did not hurt as this explanation would predict. Dropping incumbent age, candidate-faster or the churn signal gave small J gains (+0.0007 to +0.0016 in most scenarios) and lower p95. Dropping the failure count hurt in high_churn (−0.0021). Finer state does not look like the bottleneck for those features. This is consistent with explanation 3 (limited data per state), but it was not tested directly.
 3. *Sparse, noisy credit.* Per-bucket rewards sum a handful of lookups per 30 s epoch, and success is ~99% even without maintenance, so the signal per transition is small next to noise. The 20-episode reward-sanity check could not separate PROBE from KEEP for dead incumbents. It took 60 episodes in high_churn, and even then stable was inconclusive.
 4. *Little headroom above heuristics.* The tuned heuristic already matches or beats the ground-truth oracle on J in all three scenarios (0.9760 vs 0.9751, 0.9735 vs 0.9727, 0.9749 vs 0.9742). The learnable margin above it is small, and the RL gap (0.002–0.003) is of the same order as the differences between heuristic configs.
 
@@ -284,22 +286,95 @@ H5's "pass" means the runs agree in sign with the pooled result. Against the tun
 
 **Threats to validity.**
 - *Internal:* atomic lookups and pings understate the cost of dead entries under concurrent churn. kademlia_std is not decision-point matched. The reward-sanity diagnostic did not fully pass (stable, dead-incumbent PROBE vs KEEP). Two protocol changes (gates, weights) were made after looking at calibration and diagnostic data, though before any training or evaluation.
-- *Statistical:* n = 20 seeds per scenario. Holm covers only the 9 J tests; H2–H5 secondary comparisons are uncorrected. matched_random's CIs are wide because of a few poor seeds (std 0.0294 in stable).
+- *Statistical:* n = 20 seeds per scenario. Holm covers only the 9 J tests; H2–H5 secondary comparisons are uncorrected. The §10 ablations add several hundred further uncorrected comparisons on TEST seeds, so some of their individually small effects are expected to be false positives. matched_random's CIs are wide because of a few poor seeds (std 0.0294 in stable).
 - *External:* 128 nodes and 8-bit IDs give only 8 buckets. Churn is independent per node (bursty was not evaluated). There is a single learner and no adversaries.
-- *Tuning asymmetry:* the heuristic had 32 configs, RL 4 grid points. More RL tuning (or a different w_L) could change the comparison.
+- *Tuning asymmetry:* the heuristic had 32 configs, RL 4 grid points. The exploratory reward sweep (§10.2; 12 weight cells × 3 runs, scored on TEST seeds) shows that other training weights change RL's latency/ping trade-off. It found no cell that closes the high_churn J gap.
 
 ## 9. Reproducibility
 
 - Commands: see the README. The canonical order is headroom → diagnostics → train (debug, grid, final) → tune → `python -m churnmaster.experiments.matched` → `evaluate --create-lock` → `evaluate` → `reproduce --figures-only`.
 - Determinism: keyed hashing for policy-independent randomness, `SeedSequence` splits for everything else, a frozen env manifest (hashes for all 4 scenarios), and a single-use eval lock (seed-list hash `d25792a4…`). Results are identical for any worker count.
-- Verification: `reproduce --full` (659 s total on the reference machine, 8 workers; the training stage took 423 s) regenerated the whole pipeline in `results/reproduce_full/`. Its `eval/per_seed.csv` is byte-identical to the canonical one (SHA-256 equal; 780 rows, max |diff| 0 in every metric column), and the grid and tuning selections match. `reproduce --quick` finishes in 100 s. With 5 eval seeds it is a smoke test, not a result (for example, H1 is inconclusive there).
-- Version history (commit log): v0.1.0 simulator, maintenance and baselines; v0.2.0 headroom gate, env freeze, ledger and diagnostics; the cost-weight halving; v0.3.0 Q-learning and training; heuristic tuning, matched_random and statistics; v0.4.0 locked evaluation and H1–H5; then the two `reproduce` commits. The repository is tagged v0.1.0, v0.2.0, v0.2.1, v0.3.0 and v0.4.0. The canonical evaluation was produced at commit `2af8117` and the full reproduction at `cc66bd4`.
+- Verification: `reproduce --full` (659 s total on the reference machine, 8 workers; the training stage took 423 s) regenerated the whole pipeline in `results/reproduce_full/` (*local artifact*; rerun with `reproduce --full`, optionally `--out DIR`). Its `eval/per_seed.csv` is byte-identical to the canonical one (SHA-256 equal; 780 rows, max |diff| 0 in every metric column), and the grid and tuning selections match. `reproduce --quick` finishes in 100 s. With 5 eval seeds it is a smoke test, not a result (for example, H1 is inconclusive there).
+- Version history (commit log): v0.1.0 simulator, maintenance and baselines; v0.2.0 headroom gate, env freeze, ledger and diagnostics; the cost-weight halving; v0.3.0 Q-learning and training; heuristic tuning, matched_random and statistics; v0.4.0 locked evaluation and H1–H5; then the two `reproduce` commits; v1.0.0 README, report and final checkpoint (commit `2f997a0`); v1.1.0 tracked figures and the exploratory ablations of §10. The repository is tagged v0.1.0, v0.2.0, v0.2.1, v0.3.0, v0.4.0, v1.0.0 and v1.1.0. The ablation commits did not regenerate or modify any canonical result. The canonical evaluation was produced at commit `2af8117` and the full reproduction at `cc66bd4`.
 - Environment: Python 3.11.9, numpy 2.1.3, scipy 1.14.1, pandas 2.2.3, matplotlib 3.9.2, pytest 8.3.3, hypothesis 6.115.0 (recorded in every manifest).
 
-## 10. Future work
+## 10. Exploratory ablations (Task 12; not part of the locked evaluation)
 
-- **Latency-weight sweep (Task 12):** w_M ∈ {0.05, 0.2, 0.5} × w_L ∈ {0.1, 0.3, 0.6}. If raising w_L closes the p95 gap and the J gap to the tuned heuristic, explanation 1 is confirmed.
-- **γ = 0 ablation:** tests whether multi-epoch credit assignment matters at all, or whether a myopic learner does as well.
-- **Feature drop-one, no-PROBE, shuffled-reward ablations:** attribute performance to individual features and confirm that learning depends on the reward signal.
+> **Scope.** Everything in this section is exploratory and post hoc. It was run after the locked evaluation on the **TEST split (run 0, episodes 0–19)**. These seeds are disjoint from the 20 eval seeds and from every calibration, train, tuning and validation seed (checked in each suite). No result here changes Table 8, Table 9 or any hypothesis verdict. Intervals are 95% paired-bootstrap CIs over 20 seeds. p-values are Wilcoxon signed-rank and **not corrected for multiple comparisons**, and the three suites together make several hundred comparisons. "CI excludes 0" here is a descriptive flag, not a significance claim. Each suite's analysis plan was written before it ran and is recorded in `results/ablations/manifest.json` (*local artifact*). Full tables are tracked in `results/figures/ablations/tables/` and regenerated with `python -m churnmaster ablate --suite agent|reward|memoryless`, then `python scripts/export_ablation_assets.py`. All RL numbers are rl_mean, the per-seed mean of 3 independent training runs.
+
+On these TEST seeds the canonical policy reproduces the primary pattern. Its J is 0.9708 / 0.9699 / 0.9710 (stable / high_churn / heldout_medium), against 0.9739 / 0.9724 / 0.9741 for the tuned heuristic, i.e. ΔJ −0.0031 / −0.0025 / −0.0031.
+
+### 10.1 Agent ablations (Task 12.1)
+
+Each variant is retrained (3 runs × 200 episodes, canonical weights and hyperparameters) and compared with the canonical rl_mean on the same seeds.
+
+**Table 10.** Selected agent ablations, ΔJ vs canonical [95% CI] (stable / high_churn / heldout_medium). Full table with p95, pings and the comparison with the tuned heuristic: `results/figures/ablations/tables/agent_ablations.md`.
+
+| variant | what changes | stable | high_churn | heldout_medium |
+|---|---|---|---|---|
+| buffered_control | Q updates deferred to episode end, rewards not permuted | +0.0002 [−0.0002, +0.0006] | +0.0003 [−0.0003, +0.0009] | +0.0007 [+0.0002, +0.0012] |
+| shuffled_reward | as buffered_control, but rewards permuted across the episode's transitions | −0.0083 [−0.0093, −0.0072] | −0.0113 [−0.0126, −0.0098] | −0.0095 [−0.0108, −0.0082] |
+| gamma0 | γ = 0 (myopic) | −0.0009 [−0.0014, −0.0005] | −0.0042 [−0.0060, −0.0027] | −0.0015 [−0.0026, −0.0006] |
+| no_probe | PROBE masked in training and evaluation | +0.0008 [+0.0004, +0.0014] | −0.0023 [−0.0036, −0.0010] | +0.0011 [+0.0002, +0.0019] |
+| drop_inc_fail | failure-count feature removed | −0.0003 [−0.0007, +0.0001] | −0.0021 [−0.0030, −0.0013] | −0.0009 [−0.0015, −0.0004] |
+| drop_inc_age | incumbent-age feature removed | +0.0009 [+0.0004, +0.0013] | +0.0007 [+0.0001, +0.0013] | +0.0015 [+0.0009, +0.0021] |
+| drop_cand_faster | candidate-faster bit removed | +0.0008 [+0.0004, +0.0012] | +0.0008 [+0.0004, +0.0013] | +0.0016 [+0.0012, +0.0021] |
+| drop_churn | churn-signal feature removed | +0.0008 [+0.0003, +0.0013] | −0.0005 [−0.0016, +0.0004] | +0.0014 [+0.0008, +0.0020] |
+
+- **Reward signal.** shuffled_reward against its own buffered_control: ΔJ −0.0085 / −0.0115 / −0.0102. The shuffled agent also sends +321 to +397 pings/h relative to canonical. buffered_control is indistinguishable from canonical in two scenarios. So the learned behaviour depends on rewards being aligned with their transitions, not on the buffering procedure. This is an intervention within this setup. It says nothing about which reward components matter.
+- **Multi-epoch credit.** γ = 0 is worse in all three scenarios, most clearly in high_churn (−0.0042, p95 +48.5 ms [+22.2, +82.1]).
+- **PROBE and failure count.** Masking PROBE or removing the failure count hurts in high_churn (−0.0023, −0.0021). no_probe is slightly better in stable and heldout_medium.
+- **Features that did not help.** Removing incumbent age, candidate-faster, or (in two scenarios) the churn signal gave small J gains and lower p95 (−26 to −79 ms where the CI excludes 0). See §8, explanation 2.
+- **No variant reaches the tuned heuristic.** Every variant × scenario ΔJ vs tuned_heuristic is negative, with a CI excluding 0. The closest is drop_cand_faster on heldout_medium: −0.0015 [−0.0024, −0.0006].
+
+![Agent ablations: J](../results/figures/ablations/agent_ablation_J.png)
+
+Per-metric view: [`agent_ablation_metrics.png`](../results/figures/ablations/agent_ablation_metrics.png).
+
+### 10.2 Reward-weight sweep (Task 12.2)
+
+Training weights vary over w_L ∈ {0.1, 0.3, 0.6} × w_M ∈ {0.05, 0.1, 0.2, 0.5}, plus w_L = 1.0 at w_M = 0.1, with w_R = 1.5·w_M throughout. That makes 12 non-canonical cells, each trained 3 runs × 200 episodes (36 trainings). **Every policy is scored under the canonical weights** (w_L 0.3, w_M 0.1, w_R 0.15), so all J values are comparable with the rest of the report. The tuned heuristic is the canonical one (tuned for exactly this score).
+
+**Table 11.** The w_M = 0.1 line (rl_mean on TEST seeds; Δp95 vs canonical [95% CI]; stable / high_churn / heldout_medium). Full 13-cell table: `results/figures/ablations/tables/reward_sweep.md`.
+
+| w_L | p95 (ms) | Δp95 vs canonical | pings/h | ΔJ vs tuned heuristic |
+|---|---|---|---|---|
+| 0.1 | 566 / 667 / 611 | +51.6 [+36.3, +68.1] / +110.4 [+68.9, +155.6] / +61.4 [+36.1, +91.5] | 5.0 / 27.9 / 14.2 | −0.0047 / −0.0081 / −0.0070 |
+| 0.3 (canonical) | 515 / 556 / 549 | – | 8.5 / 44.3 / 20.0 | −0.0031 / −0.0025 / −0.0031 |
+| 0.6 | 457 / 541 / 486 | −57.8 [−84.2, −34.4] / −15.7 [−36.9, +1.2] / −63.0 [−93.7, −34.6] | 32.0 / 67.7 / 40.6 | −0.0027 / −0.0031 / −0.0022 |
+| 1.0 | 384 / 534 / 454 | −130.5 [−162.5, −99.3] / −22.2 [−46.5, −5.1] / −95.6 [−130.6, −63.9] | 73.7 / 99.7 / 84.7 | −0.0012 / −0.0029 / −0.0021 |
+
+- **Latency weight → p95.** Along w_M = 0.1, RL p95 decreases monotonically with w_L in every scenario (Spearman ρ = −1.00 over n = 4 points; descriptive only). The effect is large in stable and heldout_medium and small in high_churn. It comes with more pings (about 9× canonical in stable at w_L = 1.0). In high_churn the p95 gap to the tuned heuristic remains at w_L = 1.0: +47.7 ms [+9.5, +92.9].
+- **J gap.** Only one cell × scenario has ΔJ vs tuned with a CI above 0: w_L 0.6 / w_M 0.05 on stable, +0.0013 [+0.0005, +0.0021]. It was found by looking across 36 cell × scenario combinations on the same TEST seeds, so it is subject to selection, and it has not been validated on independent seeds. Two more cells have CIs that include 0 (w_L 0.3 / w_M 0.05 on stable; w_L 0.6 / w_M 0.05 on heldout_medium). In high_churn every non-canonical cell is at least 0.0029 below the tuned heuristic.
+- **Heavy maintenance cost hurts.** w_M = 0.5 drives pings to 1.4–13.4 per hour and lowers J in every scenario, by up to −0.0285 (w_L 0.1, high_churn).
+
+![Reward sweep: p95](../results/figures/ablations/reward_sweep_p95.png)
+
+Also: [`reward_sweep_J.png`](../results/figures/ablations/reward_sweep_J.png), [`reward_sweep_tradeoff.png`](../results/figures/ablations/reward_sweep_tradeoff.png).
+
+### 10.3 Memoryless held-out scenario (Task 12.3)
+
+heldout_memoryless is heldout_medium with Weibull shape 1.0 instead of 0.6 (`configs/ablations/heldout_memoryless.toml`). The Weibull scale is mean/Γ(1 + 1/shape), so mean session lengths and the online fraction are unchanged. Only the hazard shape changes, which means an incumbent's age carries no information about its remaining session. The suite checks that the scenario differs from the frozen heldout_medium env *only* in name and shape, and records its own hashes in the ablations manifest. The frozen env manifest is not modified. The canonical policies are evaluated without retraining or re-tuning. Both scenarios run on the same TEST seeds, so differences are paired by episode, although the churn draws differ. matched_random frequencies for the new scenario are measured with the task 9.2 procedure (canonical RL on 5 VALIDATION episodes).
+
+**Table 12.** Memoryless vs heldout_medium (TEST seeds; full table `results/figures/ablations/tables/memoryless.md`).
+
+| policy | J memoryless | J heldout_medium | ΔJ (shape effect) [95% CI] | p95 memoryless (ms) | p95 heldout_medium (ms) |
+|---|---|---|---|---|---|
+| rl_mean | 0.9700 | 0.9710 | −0.0009 [−0.0018, −0.0000] | 557 | 549 |
+| tuned_heuristic | 0.9725 | 0.9741 | −0.0017 [−0.0024, −0.0008] | 471 | 445 |
+| oracle_heuristic (ref) | 0.9724 | 0.9733 | −0.0009 [−0.0019, +0.0002] | 428 | 395 |
+| kademlia_epoch | 0.9619 | 0.9616 | +0.0003 [−0.0008, +0.0014] | 480 | 460 |
+| matched_random | 0.9544 | 0.9610 | −0.0065 [−0.0169, +0.0010] | 737 | 676 |
+
+- **Little changes.** J moves by at most 0.0025 for every policy except matched_random (−0.0065, with a CI that includes 0). Every p95 shape-effect CI includes 0. The ranking is unchanged: tuned ≈ oracle > RL > kademlia_epoch > random controls > never_replace.
+- **RL vs references on memoryless.** vs tuned heuristic ΔJ −0.0024 [−0.0034, −0.0015]. vs kademlia_epoch +0.0082 [+0.0074, +0.0088], with 353 fewer pings/h. vs matched_random +0.0156 [+0.0090, +0.0255].
+- **Gap shift** (memoryless minus heldout_medium, for RL minus reference): vs tuned heuristic +0.0007 [−0.0004, +0.0018], p = 0.26. vs kademlia_epoch −0.0012 [−0.0021, −0.0003], p = 0.017 (uncorrected). We find no evidence that the learned policy relies on the Weibull age signal more than the heuristic does. This fits drop_inc_age (§10.1), which did not hurt either. One held-out scenario and 20 seeds cannot show that there is no reliance.
+
+![Memoryless: J and p95](../results/figures/ablations/memoryless_J_p95.png)
+
+## 11. Future work
+
+- **Confirm the exploratory leads on fresh seeds.** Re-evaluate the most promising §10 configurations (w_L 0.6 / w_M 0.05; drop_inc_age; drop_cand_faster) on a new, pre-registered seed split. One-shot use applies, as with the eval lock. Correct for the number of configurations carried forward.
+- **Joint selection of reward weights and heuristic.** Select the w_L/w_M cell on validation seeds rather than TEST, and compare against a heuristic tuned on the same budget.
 - **Bursty churn (Task 11):** correlated regional failures with RTT inflation, where fixed thresholds may adapt worse than a learned policy.
-- **Scale and realism:** larger networks and ID spaces (more buckets and states), non-atomic lookups with in-flight churn, and a memoryless held-out scenario to test reliance on the Weibull age signal.
+- **Scale and realism:** larger networks and ID spaces (more buckets and states), and non-atomic lookups with in-flight churn.

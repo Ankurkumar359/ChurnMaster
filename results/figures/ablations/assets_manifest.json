@@ -1,0 +1,27 @@
+{
+  "note": "Exploratory ablation assets copied from results/ablations (local, gitignored) by scripts/export_ablation_assets.py; not part of the locked evaluation.",
+  "sources_sha256": {
+    "figures/agent_ablation_J.png": "73d8494b3987a4fe1f19e1795fc04aae57b07c734eda2a80d2457419ec0c89cd",
+    "figures/agent_ablation_metrics.png": "a3ce6ce735389731ff8d9cbc5364775b8392691fec8ac2216167dce4de682d12",
+    "figures/reward_sweep_J.png": "4202e2b46c4c1396ee3c6f3ddea93d002d1b495883989034478b7ed824d0eb1d",
+    "figures/reward_sweep_p95.png": "d12d1e7bf22e44288214864a725d526d3d091a513befc0dae7d0f0457ce1cab9",
+    "figures/reward_sweep_tradeoff.png": "5ad512b0a2310c2f13feb8dc9d2165c25ad17bef3deb72f534d955c351dd9f2a",
+    "figures/memoryless_J_p95.png": "011859b584ab0f20a8c431854dbdab774265a22879de12e25fd51fcc2360ede0",
+    "agent/comparison.csv": "fd94fdb0390ebd9756ee5a7cb17f3b9beaa5a14c5cb9bb6f0a1f7c217c646824",
+    "reward/comparison.csv": "bf6cf4038b90023cd17501490c8ae4dcfe5c7c104290980aeac6187a9156cabb",
+    "reward/summary.csv": "9e6719343b2a68922d9a7024acebf96757cfc7cfd0ce2f553197e354e6c108c8",
+    "memoryless/summary.md": "37e5ca6a329802e651e501ce087a073f6edc492c75c807f6ad741adb82f1070e",
+    "manifest.json": "433c21e594f005bb3a1d476cf851e63273bd84714bd29faecaa3f5b13437cae8"
+  },
+  "outputs_sha256": {
+    "agent_ablation_J.png": "73d8494b3987a4fe1f19e1795fc04aae57b07c734eda2a80d2457419ec0c89cd",
+    "agent_ablation_metrics.png": "a3ce6ce735389731ff8d9cbc5364775b8392691fec8ac2216167dce4de682d12",
+    "memoryless_J_p95.png": "011859b584ab0f20a8c431854dbdab774265a22879de12e25fd51fcc2360ede0",
+    "reward_sweep_J.png": "4202e2b46c4c1396ee3c6f3ddea93d002d1b495883989034478b7ed824d0eb1d",
+    "reward_sweep_p95.png": "d12d1e7bf22e44288214864a725d526d3d091a513befc0dae7d0f0457ce1cab9",
+    "reward_sweep_tradeoff.png": "5ad512b0a2310c2f13feb8dc9d2165c25ad17bef3deb72f534d955c351dd9f2a",
+    "tables/agent_ablations.md": "a9ac4a4b03c5839cd288dcdae50520afb8d50a8c5712fe36e18bdfec648ca83c",
+    "tables/memoryless.md": "503f043f1fe57d5321ba5f8607e9b066496263ee7283f68d27b01d0f48187cf7",
+    "tables/reward_sweep.md": "80b12bce7ad65f4ee1c2ea394d8381ec48295804b8566f547fea2beb5ff53a03"
+  }
+}
