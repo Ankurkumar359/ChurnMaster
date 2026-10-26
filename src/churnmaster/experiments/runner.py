@@ -21,7 +21,9 @@ Policy names (:func:`make_policy`)
 
 Extension point: a ready ``Policy`` object may be passed instead of a name
 (learned policies, task 8.2). Optional attributes honored on any policy:
-``env_mode`` (default ``"epoch"``) and ``maintenance`` (default True).
+``env_mode`` (default ``"epoch"``), ``maintenance`` (default True) and
+``encode_state(ctx) -> int`` (default ``rl.state.encode(discretize(ctx))``;
+used by the ablation state wrappers, task 12.1).
 
 Random baseline streams
 -----------------------
@@ -294,9 +296,14 @@ def run_job(job: Job, configs_dir: Path | None = None, *,
         lookups.append(rec)
         feed(rec)
 
+    # Optional policy hook ``encode_state(ctx) -> int`` (ablation state wrappers);
+    # every other policy uses the standard discretizer.
+    encode_state = getattr(policy, "encode_state", None)
+    if encode_state is None:
+        encode_state = lambda ctx: encode(discretize(ctx, id_bits))  # noqa: E731
     trace = env.run(policy.decide if maintenance else None, on_decision, on_lookup,
                     gt_annex=gts.append,
-                    encode_state=(lambda ctx: encode(discretize(ctx, id_bits))) if maintenance else None)
+                    encode_state=encode_state if maintenance else None)
     ledger.finish()
     metrics = summarize(lookups, decisions, gts, cfg)
     score = ledger.score()

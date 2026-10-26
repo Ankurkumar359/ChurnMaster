@@ -48,12 +48,12 @@ def test_show_config_unknown_scenario_is_clean_error(capsys):
     assert "config error" in err and "no_such_scenario" in err
 
 
-def test_all_nine_commands_registered():
+def test_all_ten_commands_registered():
     parser = build_parser()
     for name in COMMANDS:
         argv = [name, "--figures-only"] if name == "reproduce" else [name]
         assert parser.parse_args(argv).command == name
-    assert len(COMMANDS) == 9
+    assert len(COMMANDS) == 10
 
 
 def test_reproduce_requires_exactly_one_mode():

@@ -648,3 +648,52 @@ def plot_tuning_scatter(summary, path: PathLike, scenarios: Sequence[str] | None
                ncol=len(seen), frameon=True, fontsize="small")
     fig.suptitle(title or "Heuristic tuning: J vs maintenance cost per config (train seeds)")
     return _save(fig, path)
+
+
+__all__ += ["plot_ablation_forest"]
+
+
+def plot_ablation_forest(comparison, metrics: Sequence[str], path: PathLike,
+                         title: str | None = None) -> Path:
+    """Forest plot of paired differences vs a reference, one panel per metric.
+
+    ``comparison`` needs columns ``variant, scenario, metric, mean_diff,
+    ci_lo, ci_hi``. Rows: variants (input order); one marker + CI bar per
+    scenario (offset vertically); a dashed line at 0.
+    """
+    variants = list(dict.fromkeys(comparison["variant"]))
+    scenarios = list(dict.fromkeys(comparison["scenario"]))
+    metrics = list(metrics)
+    if not variants or not metrics:
+        raise ValueError("plot_ablation_forest needs at least one variant and one metric")
+    height = max(3.0, 0.45 * len(variants) * max(1, len(scenarios)) / 2 + 1.5)
+    fig = Figure(figsize=(5.2 * len(metrics) + 1.5, height))
+    axes = fig.subplots(1, len(metrics), sharey=True, squeeze=False)[0]
+    n_s = max(1, len(scenarios))
+    offs = np.linspace(-0.25, 0.25, n_s) if n_s > 1 else np.zeros(1)
+    y_base = np.arange(len(variants))[::-1].astype(float)
+    for ax, m in zip(axes, metrics):
+        sub = comparison[comparison["metric"] == m]
+        for j, s in enumerate(scenarios):
+            ss = sub[sub["scenario"] == s].set_index("variant")
+            ys, xs, lo, hi = [], [], [], []
+            for i, v in enumerate(variants):
+                if v not in ss.index:
+                    continue
+                r = ss.loc[v]
+                ys.append(y_base[i] + offs[j])
+                xs.append(float(r["mean_diff"]))
+                lo.append(float(r["mean_diff"]) - float(r["ci_lo"]))
+                hi.append(float(r["ci_hi"]) - float(r["mean_diff"]))
+            ax.errorbar(xs, ys, xerr=[lo, hi], fmt="o", ms=4, capsize=2, lw=1,
+                        color=PALETTE[j % len(PALETTE)], label=s)
+        ax.axvline(0.0, color="0.4", ls="--", lw=0.8)
+        ax.set_xlabel(f"Δ {m}")
+        ax.grid(axis="x", alpha=0.3)
+    axes[0].set_yticks(y_base)
+    axes[0].set_yticklabels(variants)
+    axes[-1].legend(loc="best", fontsize=8)
+    if title:
+        fig.suptitle(title, fontsize=9)
+    fig.tight_layout()
+    return _save(fig, path)

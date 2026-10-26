@@ -850,6 +850,25 @@
         "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
         "timestamp": 1792973504286
       }
+    ],
+    "12.1 Implement agent ablations in `experiments/ablations.py`": [
+      {
+        "executionId": "1d3bf5d6-562c-4b77-9c02-63967cb4fe5c",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792974422259
+      },
+      {
+        "executionId": "1d3bf5d6-562c-4b77-9c02-63967cb4fe5c",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792977381093
+      }
+    ],
+    "12. Ablations (optional)": [
+      {
+        "executionId": "1d3bf5d6-562c-4b77-9c02-63967cb4fe5c",
+        "chatSessionId": "sess_f31b5448-d596-4b66-a86f-7f1b94be59a4",
+        "timestamp": 1792977381260
+      }
     ]
   }
 }

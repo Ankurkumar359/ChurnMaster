@@ -1,7 +1,8 @@
 """Command-line entry point (Requirement 26.1).
 
 Subcommands: show-config, simulate, compare, headroom, diagnostics, train,
-tune, evaluate, reproduce (``--quick``, ``--full`` or ``--figures-only``).
+tune, evaluate, reproduce (``--quick``, ``--full`` or ``--figures-only``),
+ablate (exploratory ablations, ``--suite agent``).
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 from churnmaster.config import ConfigError, config_hash, load_config, to_dict
 
 COMMANDS = ("show-config", "simulate", "compare", "headroom", "diagnostics", "train", "tune",
-            "evaluate", "reproduce")
+            "evaluate", "reproduce", "ablate")
 
 
 def default_configs_dir() -> Path:
@@ -649,7 +650,70 @@ def build_parser() -> argparse.ArgumentParser:
                    help="parallel worker processes for --quick / --full (default "
                         "min(cpu_count - 1, 8); results are identical for any N)")
     p.set_defaults(func=cmd_reproduce)
+
+    p = sub.add_parser("ablate", help="exploratory ablations on TEST seeds (separate from the "
+                                      "locked evaluation)")
+    _add_config_args(p, scenario=False)
+    p.add_argument("--suite", choices=("agent",), default="agent",
+                   help="ablation suite (default agent: gamma0, no_probe, shuffled_reward, "
+                        "buffered_control, drop_<feature>)")
+    p.add_argument("--variants", default=None,
+                   help="comma-separated subset of the suite's variants (default: all)")
+    p.add_argument("--episodes", type=int, default=None,
+                   help="override training episodes (default 200; shortened runs skip the "
+                        "canonical-settings check)")
+    p.add_argument("--seeds", type=int, default=20, help="TEST episodes per scenario (default 20)")
+    p.add_argument("--manifest", default="results/headroom/manifest.json",
+                   help="frozen env manifest (read only)")
+    p.add_argument("--rl-q", nargs="+", default=None, metavar="PATH",
+                   help="canonical Q-tables (default results/train/final/run{0,1,2}/q_final.npy)")
+    p.add_argument("--tune-selected", default="results/tune/selected.json",
+                   help="heuristic tuning selection (default results/tune/selected.json)")
+    p.add_argument("--out", default="results/ablations", metavar="DIR",
+                   help="output root (default results/ablations); canonical dirs are refused")
+    p.add_argument("--overwrite", action="store_true",
+                   help="replace an existing suite output")
+    p.add_argument("--log-every", type=int, default=0, metavar="N",
+                   help="print a training progress line every N episodes (default off)")
+    p.add_argument("--workers", type=int, default=None, metavar="N",
+                   help="parallel worker processes (default min(cpu_count - 1, 8); results "
+                        "are identical for any N)")
+    p.set_defaults(func=cmd_ablate)
     return parser
+
+
+def cmd_ablate(args: argparse.Namespace) -> int:
+    """Exploratory ablations (Requirement 28.1). Exit 0 ok, 1 on usage / input errors."""
+    from churnmaster.experiments.ablations import AblationSeedError, run_agent_suite
+    from churnmaster.experiments.runner import FrozenEnvError, default_workers
+
+    def fail(msg: str) -> int:
+        print(f"churnmaster ablate: {msg}", file=sys.stderr)
+        return 1
+
+    workers = default_workers() if args.workers is None else args.workers
+    if workers < 1 or args.seeds < 1 or (args.episodes is not None and args.episodes < 1):
+        return fail("--workers, --seeds and --episodes must be >= 1")
+    variants = [v.strip() for v in args.variants.split(",") if v.strip()] if args.variants else None
+    root = _configs_root(args)
+    exp = _experiment_path(args) or root / "experiments" / "train.toml"
+    try:
+        rep = run_agent_suite(root, Path(args.manifest), Path(args.out), experiment_path=exp,
+                              variants=variants, episodes=args.episodes, n_seeds=args.seeds,
+                              canonical_q=args.rl_q, tune_selected=args.tune_selected,
+                              workers=workers, overwrite=args.overwrite,
+                              log_every=args.log_every, progress=lambda m: print(m, flush=True))
+    except (FrozenEnvError, AblationSeedError, ValueError, FileNotFoundError) as e:
+        return fail(str(e))
+    c = rep.comparison
+    print("exploratory; p uncorrected. dX = rl_mean(variant) - reference, paired over TEST seeds")
+    for _, r in c[c["metric"] == "J"].iterrows():
+        print(f"  {r['comparison']:<20} {r['variant']:<20} vs {r['reference']:<16} "
+              f"{r['scenario']:<15} dJ={r['mean_diff']:+.4f} [{r['ci_lo']:+.4f}, "
+              f"{r['ci_hi']:+.4f}] p={r['p_uncorrected']:.3g}")
+    print(f"ablate[{rep.suite}]: wall={rep.wall_s:.1f}s (train {rep.train_wall_s:.1f}s, eval "
+          f"{rep.eval_wall_s:.1f}s); wrote {len(rep.files)} files to {rep.out_dir}")
+    return 0
 
 
 def _reproduce_pipeline(args: argparse.Namespace, mode: str) -> int:

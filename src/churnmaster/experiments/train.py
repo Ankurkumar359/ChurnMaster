@@ -18,6 +18,11 @@ run)`` (AGENT split, disjoint from every env stream), consumed across all of
 the run's episodes in order. Runs never share a generator, so a run's
 result does not depend on which other runs are trained or in which process.
 
+Ablation hooks (task 12.1): ``TrainSpec.hooks`` (:class:`TrainHooks`) may
+replace the state encoder, the action mask and the update timing
+(online / buffered / shuffled rewards). ``hooks=None`` (the default) runs the
+code path above unchanged (tested: identical Q-tables).
+
 Checkpoints and validation
 --------------------------
 Checkpoint ``c`` is the agent after ``c`` training episodes, for ``c`` in
@@ -108,7 +113,8 @@ from churnmaster.sim.observation import DecisionContext
 __all__ = [
     "MODES", "DEFAULT_SCENARIOS", "REFERENCE_POLICIES", "PRIMARY_REFERENCE",
     "GREEDY_UNTRAINED_REFERENCE", "DQ_WINDOW", "TrainSettings", "TrainingPolicy", "TrainSpec",
-    "TrainOutput", "train_agent", "run_trainings", "run_validation", "validation_row",
+    "TrainOutput", "TrainHooks", "UPDATE_MODES", "SHUFFLE_STREAM_ID", "shuffle_rng",
+    "buffered_rewards", "apply_buffered", "train_agent", "run_trainings", "run_validation", "validation_row",
     "select_grid", "i4_from_frames", "i4_check", "greedy_table_frame", "greedy_stats",
     "RunReport", "TrainReport", "run_training",
 ]
@@ -198,16 +204,94 @@ class TrainSettings:
 
 
 class TrainingPolicy:
-    """ε-greedy in-process policy over a *live* agent (training only, not picklable-safe)."""
+    """ε-greedy in-process policy over a *live* agent (training only, not picklable-safe).
+
+    ``encode`` (optional, ablations) replaces the standard state encoder
+    ``encode(discretize(ctx, id_bits))``; it is also exposed as
+    ``encode_state`` so the env records the same state the agent acts on.
+    """
 
     name = "training"
     shares_decision_points = True
 
-    def __init__(self, agent: QAgent, eps: float, rng: np.random.Generator, id_bits: int):
+    def __init__(self, agent: QAgent, eps: float, rng: np.random.Generator, id_bits: int,
+                 encode: Callable[[DecisionContext, int], int] | None = None):
         self.agent, self.eps, self.rng, self.id_bits = agent, float(eps), rng, int(id_bits)
+        self.encode = encode
+
+    def encode_state(self, ctx: DecisionContext) -> int:
+        if self.encode is None:
+            return encode(discretize(ctx, self.id_bits))
+        return int(self.encode(ctx, self.id_bits))
 
     def decide(self, ctx: DecisionContext) -> Action:
-        return self.agent.act(encode(discretize(ctx, self.id_bits)), self.eps, self.rng)
+        return self.agent.act(self.encode_state(ctx), self.eps, self.rng)
+
+
+# --------------------------------------------------------------------------- #
+# Optional training hooks (ablations, task 12.1)
+# --------------------------------------------------------------------------- #
+
+UPDATE_MODES = ("online", "buffered", "shuffled")
+#: AGENT-split stream id of the reward-shuffle generator: ``SeedSequence(root,
+#: spawn_key=(AGENT, run, 0, SHUFFLE_STREAM_ID))`` -- the exploration stream
+#: ``agent_rng(root, run)`` (spawn key ``(AGENT, run, 0)``) extended by one word,
+#: hence distinct from it, from every env stream and from the random baselines.
+SHUFFLE_STREAM_ID = 1
+
+
+def shuffle_rng(root: int, run: int) -> np.random.Generator:
+    """Reward-permutation generator of run ``run`` (see :data:`SHUFFLE_STREAM_ID`)."""
+    from churnmaster.seeding import episode_seed
+
+    ss = episode_seed(root, Split.AGENT, run, 0)
+    return np.random.default_rng(np.random.SeedSequence(
+        ss.entropy, spawn_key=tuple(ss.spawn_key) + (SHUFFLE_STREAM_ID,)))
+
+
+@dataclass(frozen=True)
+class TrainHooks:
+    """Optional, picklable training modifications; ``TrainSpec.hooks=None`` is canonical.
+
+    * ``encode``: state encoder ``(ctx, id_bits) -> state`` (e.g. ``rl.variants.FeatureDrop``);
+    * ``mask``: action mask of the agent (e.g. ``rl.variants.no_probe_mask()``); with a
+      mask, updates bootstrap over the agent's mask row of ``s'`` (not the ledger's
+      ``allowed_next``, which always contains PROBE);
+    * ``update_mode``: ``online`` (canonical: every transition updates Q as soon as
+      the ledger emits it), ``buffered`` (transitions are buffered and applied in
+      emission order at episode end) or ``shuffled`` (as ``buffered``, but the
+      episode's rewards are randomly permuted across its transitions first, with
+      :func:`shuffle_rng`).
+    """
+
+    encode: Callable[[DecisionContext, int], int] | None = None
+    mask: np.ndarray | None = field(default=None, compare=False)
+    update_mode: str = "online"
+
+    def __post_init__(self) -> None:
+        if self.update_mode not in UPDATE_MODES:
+            raise ValueError(f"update_mode must be one of {UPDATE_MODES}, got {self.update_mode!r}")
+
+
+def buffered_rewards(transitions: Sequence[Any], rng: np.random.Generator | None) -> list[float]:
+    """Rewards to apply to ``transitions`` (in order): unchanged, or permuted with ``rng``."""
+    r = [float(tr.r) for tr in transitions]
+    if rng is None or len(r) < 2:
+        return r
+    perm = rng.permutation(len(r))
+    return [r[int(i)] for i in perm]
+
+
+def apply_buffered(agent: QAgent, transitions: Sequence[Any],
+                   rng: np.random.Generator | None, use_mask: bool) -> list[float]:
+    """Apply buffered transitions at episode end; returns the rewards used."""
+    rewards = buffered_rewards(transitions, rng)
+    for tr, r in zip(transitions, rewards):
+        if use_mask:
+            agent.update(tr.s, tr.a, r, tr.s_next)
+        else:
+            agent.update(tr.s, tr.a, r, tr.s_next, tr.allowed_next)
+    return rewards
 
 
 # --------------------------------------------------------------------------- #
@@ -222,6 +306,7 @@ class TrainSpec:
     settings: TrainSettings
     run: int = 0
     log_every: int = 0      # >0: print a progress line every N episodes
+    hooks: TrainHooks | None = None   # ablations only; None = canonical training
 
 
 @dataclass
@@ -247,8 +332,12 @@ def train_agent(spec: TrainSpec) -> TrainOutput:
         raise ValueError("training scenarios must share root_seed and sim.id_bits")
     root, id_bits = roots.pop(), bits.pop()
 
-    agent = QAgent(st.gamma, st.alpha_min, st.alpha_exp)
+    hooks = spec.hooks
+    mask = None if hooks is None else hooks.mask
+    mode = "online" if hooks is None else hooks.update_mode
+    agent = QAgent(st.gamma, st.alpha_min, st.alpha_exp, mask=mask)
     rng = agent_rng(root, run)                       # one exploration stream per run
+    srng = shuffle_rng(root, run) if mode == "shuffled" else None
     ckpts = set(st.checkpoints())
     snapshots: dict[int, QAgent] = {}
     if 0 in ckpts:
@@ -259,9 +348,18 @@ def train_agent(spec: TrainSpec) -> TrainOutput:
         cfg = cfgs[scn]
         eps = epsilon(e, st)
         agent.reset_stats()
-        pol = TrainingPolicy(agent, eps, rng, id_bits)
-        res = run_job(Job(pol, scn, Split.TRAIN, run, e), cfg=cfg,
-                      on_transition=agent.update_transition)
+        pol = TrainingPolicy(agent, eps, rng, id_bits,
+                             encode=None if hooks is None else hooks.encode)
+        buffer: list[Any] = []
+        if mode != "online":
+            on_tr: Callable[[Any], Any] = buffer.append
+        elif mask is not None:
+            on_tr = lambda tr: agent.update(tr.s, tr.a, tr.r, tr.s_next)  # noqa: E731
+        else:
+            on_tr = agent.update_transition          # canonical path
+        res = run_job(Job(pol, scn, Split.TRAIN, run, e), cfg=cfg, on_transition=on_tr)
+        if mode != "online":
+            apply_buffered(agent, buffer, srng, use_mask=mask is not None)
         m = res.metrics
         rows.append({
             "episode": e, "scenario": scn, "epsilon": eps, "J": m.J,

@@ -67,7 +67,7 @@ __all__ = [
 
 RESULTS_ROOT = Path("results")
 CANONICAL_NAMES = ("headroom", "diagnostics", "diagnostics_60", "train", "tune", "matched",
-                   "eval", "checkpoint_5_17")
+                   "eval", "checkpoint_5_17", "ablations")
 CANONICAL_DIRS = tuple(RESULTS_ROOT / n for n in CANONICAL_NAMES)
 
 # Reference lines on the validation learning curves (references.csv policies).

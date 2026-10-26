@@ -296,8 +296,8 @@ Incremental Python 3.11+ implementation following the v2 plan task order (1–12
     - Extend `experiments/evaluate.py` with an opt-in bursty scenario (reported separately from primary tests)
     - _Requirements: 27.1, 27.2_
 
-- [ ] 12. Ablations (optional)
-  - [ ]* 12.1 Implement agent ablations in `experiments/ablations.py`
+- [x] 12. Ablations (optional)
+  - [x]* 12.1 Implement agent ablations in `experiments/ablations.py`
     - γ=0, no PROBE (masked), shuffled reward, feature drop-one (discretizer wrapper)
     - _Requirements: 28.1_
   - [ ]* 12.2 Implement reward-weight sweep
