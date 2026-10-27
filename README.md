@@ -5,6 +5,8 @@ ChurnMaster asks whether tabular Q-learning can learn a better peer-replacement 
 Research question: under churn, does a Q-learned maintenance policy beat standard Kademlia-style maintenance and a tuned heuristic on a combined lookup-quality/maintenance-cost score J, and does it generalize to a churn regime it was not trained on?
 
 
+**Repository:** <https://github.com/Ankurkumar359/ChurnMaster>
+
 **Deliverables.** Two-page paper: [`report/churnmaster_report.pdf`](report/churnmaster_report.pdf) (LaTeX source alongside). Full technical record: [`FINAL_RESULTS.md`](FINAL_RESULTS.md). Long-form study report: [`docs/report.md`](docs/report.md). Release tags: `v1.0.0` (locked evaluation, MVP), `v1.1.0` (exploratory ablations), `v1.2.0` (submission package).
 
 ## RL formulation
