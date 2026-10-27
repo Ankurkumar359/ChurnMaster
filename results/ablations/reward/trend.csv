@@ -1,0 +1,4 @@
+scenario,metric,w_M,n_points,w_L_values,rl_mean_values,cells,spearman_rho,note
+stable,p95_latency_all_ms,0.1,4,"[0.1, 0.3, 0.6, 1.0]","[566.4615020223237, 514.8221758281389, 456.9769450082088, 384.3018477524097]","[""wL0.1_wM0.1"", ""wL0.3_wM0.1"", ""wL0.6_wM0.1"", ""wL1.0_wM0.1""]",-1.0,Spearman rho over n=4 w_L points at w_M=0.1 (descriptive only; no inference)
+high_churn,p95_latency_all_ms,0.1,4,"[0.1, 0.3, 0.6, 1.0]","[666.7668112940194, 556.405543023829, 540.7385973045139, 534.2200784046947]","[""wL0.1_wM0.1"", ""wL0.3_wM0.1"", ""wL0.6_wM0.1"", ""wL1.0_wM0.1""]",-1.0,Spearman rho over n=4 w_L points at w_M=0.1 (descriptive only; no inference)
+heldout_medium,p95_latency_all_ms,0.1,4,"[0.1, 0.3, 0.6, 1.0]","[610.6779113686788, 549.2524099761681, 486.2868571392396, 453.63956496086485]","[""wL0.1_wM0.1"", ""wL0.3_wM0.1"", ""wL0.6_wM0.1"", ""wL1.0_wM0.1""]",-1.0,Spearman rho over n=4 w_L points at w_M=0.1 (descriptive only; no inference)

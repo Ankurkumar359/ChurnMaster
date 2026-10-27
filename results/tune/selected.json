@@ -1,0 +1,61 @@
+{
+  "default_config": "f=2,po=1,rs=0,ps=1,tg=all",
+  "default_rank": 22,
+  "env_hashes": {
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+  },
+  "global": "f=2,po=0,rs=1,ps=0,tg=all",
+  "global_label": "tuned_heuristic",
+  "global_policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+  "n_configs": 32,
+  "n_jobs": 640,
+  "per_scenario": {
+    "high_churn": "f=2,po=0,rs=1,ps=0,tg=top_two",
+    "stable": "f=2,po=0,rs=1,ps=0,tg=all"
+  },
+  "privileged": [
+    {
+      "config": "f=2,po=0,rs=1,ps=0,tg=all",
+      "label": "tuned_heuristic_privileged",
+      "policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+      "privileged": true,
+      "scenario": "stable"
+    },
+    {
+      "config": "f=2,po=0,rs=1,ps=0,tg=top_two",
+      "label": "tuned_heuristic_privileged",
+      "policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=top_two",
+      "privileged": true,
+      "scenario": "high_churn"
+    }
+  ],
+  "scenarios": [
+    "stable",
+    "high_churn"
+  ],
+  "seeds": {
+    "episodes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "n_seeds": 10,
+    "note": "TRAIN split (disjoint from VALIDATION and EVAL); run index 1000 keeps tuning episodes distinct from RL training runs 0..2",
+    "run": 1000,
+    "scenarios": [
+      "stable",
+      "high_churn"
+    ],
+    "split": "train"
+  },
+  "selection_rule": "global: max of the unweighted mean over scenarios of per-scenario mean J; per-scenario: max mean J in that scenario (privileged); ties |dJ|<=1e-12: DEFAULT_CONFIG first, then all_configs() order",
+  "wall_s": 47.0
+}

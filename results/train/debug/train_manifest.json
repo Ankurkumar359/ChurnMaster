@@ -1,0 +1,43 @@
+{
+  "env_hashes": {
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6"
+  },
+  "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\train.toml",
+  "frozen_checked": true,
+  "manifest": "results\\headroom\\manifest.json",
+  "mode": "debug",
+  "reference_policies": [
+    "never_replace",
+    "uniform_random",
+    "kademlia_epoch",
+    "heuristic",
+    "oracle_heuristic"
+  ],
+  "runs": [
+    0
+  ],
+  "scenarios": [
+    "high_churn"
+  ],
+  "selected": null,
+  "selection_source": "config",
+  "settings": [
+    {
+      "alpha_exp": 0.7,
+      "alpha_min": 0.05,
+      "episodes": 100,
+      "eps_decay_frac": 0.6,
+      "eps_end": 0.05,
+      "eps_start": 1.0,
+      "gamma": 0.9,
+      "scenarios": [
+        "high_churn"
+      ],
+      "validate_every": 20
+    }
+  ],
+  "train_wall_s": 61.18744730000071,
+  "validation_seeds": 5,
+  "wall_s": 65.67606480000177,
+  "workers": 8
+}

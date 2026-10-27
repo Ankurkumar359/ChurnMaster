@@ -1,0 +1,7 @@
+{
+  "gamma": 0.8,
+  "alpha_min": 0.05,
+  "alpha_exp": 0.7,
+  "n_states": 648,
+  "n_actions": 3
+}

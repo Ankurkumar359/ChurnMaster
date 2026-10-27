@@ -1,0 +1,8 @@
+{
+  "alpha_min": 0.02,
+  "gamma": 0.8,
+  "last_k": 3,
+  "n_tied": 1,
+  "reason": "highest score",
+  "score": 0.9707947063289205
+}

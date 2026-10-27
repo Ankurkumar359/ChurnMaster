@@ -1,0 +1,73 @@
+{
+  "beats_primary": true,
+  "comparisons": {
+    "checkpoint0": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.044912488434870744,
+      "level": 0.95,
+      "lo": 0.01860722848306102,
+      "mean": 0.031946230734163694,
+      "n": 5,
+      "n_resamples": 10000
+    },
+    "never_replace": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.044912488434870744,
+      "level": 0.95,
+      "lo": 0.01860722848306102,
+      "mean": 0.031946230734163694,
+      "n": 5,
+      "n_resamples": 10000
+    },
+    "uniform_random": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.010421768453169866,
+      "level": 0.95,
+      "lo": 0.006922596043353479,
+      "mean": 0.008672182248261672,
+      "n": 5,
+      "n_resamples": 10000
+    }
+  },
+  "dq": {
+    "first_mean": 0.05168300727148008,
+    "last_mean": 0.013915847966692185,
+    "shrinks": true,
+    "trend": [
+      {
+        "from_episode": 0,
+        "mean_abs_dq": 0.05168300727148008,
+        "to_episode": 20
+      },
+      {
+        "from_episode": 20,
+        "mean_abs_dq": 0.021846067310238016,
+        "to_episode": 40
+      },
+      {
+        "from_episode": 40,
+        "mean_abs_dq": 0.019471702317922838,
+        "to_episode": 60
+      },
+      {
+        "from_episode": 60,
+        "mean_abs_dq": 0.017365834859979497,
+        "to_episode": 80
+      },
+      {
+        "from_episode": 80,
+        "mean_abs_dq": 0.013915847966692185,
+        "to_episode": 100
+      }
+    ],
+    "window": 20
+  },
+  "final_checkpoint": 100,
+  "first_checkpoint": 0,
+  "note": "checkpoint0 is the untrained greedy policy (all KEEP == never_replace); uniform_random is the untrained agent's actual episode-0 behaviour (primary)",
+  "passed": true,
+  "primary_reference": "uniform_random"
+}

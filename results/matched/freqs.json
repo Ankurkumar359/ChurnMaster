@@ -1,0 +1,101 @@
+{
+  "heldout_medium": {
+    "cand": [
+      0.9557605867045186,
+      0.01656020818547433,
+      0.027679205110007096
+    ],
+    "counts": {
+      "cand": [
+        4040,
+        70,
+        117
+      ],
+      "no_cand": [
+        5545,
+        76,
+        0
+      ]
+    },
+    "env_hash": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+    "n_episodes": 15,
+    "n_seeds": 5,
+    "no_cand": [
+      0.9864792741505071,
+      0.013520725849492973,
+      0.0
+    ],
+    "q_paths": [
+      "results\\train\\final\\run0\\q_final.npy",
+      "results\\train\\final\\run1\\q_final.npy",
+      "results\\train\\final\\run2\\q_final.npy"
+    ],
+    "split": "validation"
+  },
+  "high_churn": {
+    "cand": [
+      0.9264632316158079,
+      0.03851925962981491,
+      0.03501750875437719
+    ],
+    "counts": {
+      "cand": [
+        3704,
+        154,
+        140
+      ],
+      "no_cand": [
+        4582,
+        176,
+        0
+      ]
+    },
+    "env_hash": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "n_episodes": 15,
+    "n_seeds": 5,
+    "no_cand": [
+      0.9630096679277007,
+      0.036990332072299285,
+      0.0
+    ],
+    "q_paths": [
+      "results\\train\\final\\run0\\q_final.npy",
+      "results\\train\\final\\run1\\q_final.npy",
+      "results\\train\\final\\run2\\q_final.npy"
+    ],
+    "split": "validation"
+  },
+  "stable": {
+    "cand": [
+      0.9854842367883874,
+      0.0074846904059877525,
+      0.007031072805624858
+    ],
+    "counts": {
+      "cand": [
+        4345,
+        33,
+        31
+      ],
+      "no_cand": [
+        5669,
+        25,
+        0
+      ]
+    },
+    "env_hash": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d",
+    "n_episodes": 15,
+    "n_seeds": 5,
+    "no_cand": [
+      0.9956094134176326,
+      0.0043905865823674044,
+      0.0
+    ],
+    "q_paths": [
+      "results\\train\\final\\run0\\q_final.npy",
+      "results\\train\\final\\run1\\q_final.npy",
+      "results\\train\\final\\run2\\q_final.npy"
+    ],
+    "split": "validation"
+  }
+}

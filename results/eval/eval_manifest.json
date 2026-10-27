@@ -1,0 +1,529 @@
+{
+  "allow_rerun": false,
+  "config_hashes": {
+    "heldout_medium": "9cfb001e37eedb1d9ad44096baf5c8075ac186f2f3c967e315948174e8498ab5",
+    "high_churn": "0b38f9c004acdc8a426b43afc3d8397d510dc904f41568a7907d1736a10ca30e",
+    "stable": "de1278fbbad20a76532f8ccfb07e6ef8a743b6f2eabdbef0de8ffb09dca9f661"
+  },
+  "created_utc": "2026-10-25T22:28:55+00:00",
+  "env_hashes": {
+    "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+  },
+  "eval_lock": {
+    "created_utc": "2026-10-25T21:57:58+00:00",
+    "disjoint": {
+      "checked_against": [
+        {
+          "episodes": [
+            0,
+            19
+          ],
+          "name": "calibration",
+          "runs": [
+            0
+          ],
+          "split": "calibration"
+        },
+        {
+          "episodes": [
+            0,
+            199
+          ],
+          "name": "train",
+          "runs": [
+            0,
+            1,
+            2
+          ],
+          "split": "train"
+        },
+        {
+          "episodes": [
+            0,
+            9
+          ],
+          "name": "tuning",
+          "runs": [
+            1000
+          ],
+          "split": "train"
+        },
+        {
+          "episodes": [
+            0,
+            4
+          ],
+          "name": "validation",
+          "runs": [
+            0
+          ],
+          "split": "validation"
+        }
+      ],
+      "n_other_seed_states": 635,
+      "overlap": false
+    },
+    "episodes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "root_seed": 20240601,
+    "run": 0,
+    "scenarios": [
+      "heldout_medium",
+      "high_churn",
+      "stable"
+    ],
+    "seed_list_hash": "d25792a4a6fab2a9c7e25f6721377d36b5f431bf6f055dd2a9873793696d9a88",
+    "seed_states": {
+      "0": [
+        2974677128,
+        1377150290,
+        2694822885,
+        4277887028
+      ],
+      "1": [
+        494867448,
+        3350424657,
+        1474114966,
+        78383235
+      ],
+      "10": [
+        2667530828,
+        1635886602,
+        2947643524,
+        3635074677
+      ],
+      "11": [
+        3527290387,
+        1058858425,
+        1021193879,
+        545943436
+      ],
+      "12": [
+        3467584999,
+        508290717,
+        2001674432,
+        3948764458
+      ],
+      "13": [
+        467217552,
+        1417369520,
+        152462524,
+        3237296909
+      ],
+      "14": [
+        402983617,
+        3939299397,
+        373319339,
+        1592877224
+      ],
+      "15": [
+        1382193771,
+        2257568209,
+        62071416,
+        1953934976
+      ],
+      "16": [
+        2648568873,
+        3641769378,
+        2161351425,
+        1150078549
+      ],
+      "17": [
+        2981214443,
+        628360004,
+        2167332345,
+        164999216
+      ],
+      "18": [
+        2996307530,
+        4135697121,
+        1263364413,
+        979160975
+      ],
+      "19": [
+        2303479908,
+        746376614,
+        2656852319,
+        834802327
+      ],
+      "2": [
+        843069056,
+        1508064301,
+        1336507469,
+        2601557851
+      ],
+      "3": [
+        136096318,
+        47075016,
+        1375911873,
+        3287916638
+      ],
+      "4": [
+        396944008,
+        2402968063,
+        2902152148,
+        500795521
+      ],
+      "5": [
+        3768751150,
+        136324301,
+        3443939504,
+        2440166644
+      ],
+      "6": [
+        1983539507,
+        3544049878,
+        3153216801,
+        2706002570
+      ],
+      "7": [
+        4008993468,
+        3667904786,
+        3860543664,
+        3211898045
+      ],
+      "8": [
+        1197960992,
+        2259312323,
+        2540092809,
+        1498452592
+      ],
+      "9": [
+        66938782,
+        1920503708,
+        4201940872,
+        348515943
+      ]
+    },
+    "split": "eval"
+  },
+  "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\eval.toml",
+  "frozen_manifest": "results\\headroom\\manifest.json",
+  "git_hash": "2af8117510378012158ceaa1d5470cf50f3dca5e",
+  "labels": {
+    "always_replace": [
+      "always_replace"
+    ],
+    "heuristic": [
+      "heuristic"
+    ],
+    "kademlia_epoch": [
+      "kademlia_epoch"
+    ],
+    "kademlia_std": [
+      "kademlia_std"
+    ],
+    "matched_random": [
+      "matched_random"
+    ],
+    "never_replace": [
+      "never_replace"
+    ],
+    "oracle_heuristic": [
+      "oracle_heuristic"
+    ],
+    "rl_run0": [
+      "learned"
+    ],
+    "rl_run1": [
+      "learned"
+    ],
+    "rl_run2": [
+      "learned"
+    ],
+    "tuned_heuristic": [
+      "heuristic:f=2,po=0,rs=1,ps=0,tg=all"
+    ],
+    "tuned_heuristic_privileged": [
+      "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+      "heuristic:f=2,po=0,rs=1,ps=0,tg=top_two"
+    ],
+    "uniform_random": [
+      "uniform_random"
+    ]
+  },
+  "matched_freqs": {
+    "heldout_medium": {
+      "cand": [
+        0.9557605867045186,
+        0.01656020818547433,
+        0.027679205110007096
+      ],
+      "counts": {
+        "cand": [
+          4040,
+          70,
+          117
+        ],
+        "no_cand": [
+          5545,
+          76,
+          0
+        ]
+      },
+      "env_hash": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+      "n_episodes": 15,
+      "n_seeds": 5,
+      "no_cand": [
+        0.9864792741505071,
+        0.013520725849492973,
+        0.0
+      ],
+      "q_paths": [
+        "results\\train\\final\\run0\\q_final.npy",
+        "results\\train\\final\\run1\\q_final.npy",
+        "results\\train\\final\\run2\\q_final.npy"
+      ],
+      "split": "validation"
+    },
+    "high_churn": {
+      "cand": [
+        0.9264632316158079,
+        0.03851925962981491,
+        0.03501750875437719
+      ],
+      "counts": {
+        "cand": [
+          3704,
+          154,
+          140
+        ],
+        "no_cand": [
+          4582,
+          176,
+          0
+        ]
+      },
+      "env_hash": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+      "n_episodes": 15,
+      "n_seeds": 5,
+      "no_cand": [
+        0.9630096679277007,
+        0.036990332072299285,
+        0.0
+      ],
+      "q_paths": [
+        "results\\train\\final\\run0\\q_final.npy",
+        "results\\train\\final\\run1\\q_final.npy",
+        "results\\train\\final\\run2\\q_final.npy"
+      ],
+      "split": "validation"
+    },
+    "path": "results/matched/freqs.json",
+    "stable": {
+      "cand": [
+        0.9854842367883874,
+        0.0074846904059877525,
+        0.007031072805624858
+      ],
+      "counts": {
+        "cand": [
+          4345,
+          33,
+          31
+        ],
+        "no_cand": [
+          5669,
+          25,
+          0
+        ]
+      },
+      "env_hash": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d",
+      "n_episodes": 15,
+      "n_seeds": 5,
+      "no_cand": [
+        0.9956094134176326,
+        0.0043905865823674044,
+        0.0
+      ],
+      "q_paths": [
+        "results\\train\\final\\run0\\q_final.npy",
+        "results\\train\\final\\run1\\q_final.npy",
+        "results\\train\\final\\run2\\q_final.npy"
+      ],
+      "split": "validation"
+    }
+  },
+  "n_jobs": 780,
+  "packages": {
+    "churnmaster": "0.1.0",
+    "matplotlib": "3.9.2",
+    "numpy": "2.1.3",
+    "pandas": "2.2.3",
+    "python": "3.11.9"
+  },
+  "per_seed_sha256": "621146f91a520148b69d1ff8a5e737f5a23b883febb29e6e7418789e2d001454",
+  "policies": [
+    "never_replace",
+    "always_replace",
+    "uniform_random",
+    "matched_random",
+    "kademlia_epoch",
+    "kademlia_std",
+    "heuristic",
+    "tuned_heuristic",
+    "tuned_heuristic_privileged",
+    "oracle_heuristic",
+    "learned"
+  ],
+  "prior_eval_runs": 0,
+  "privileged_fallback": [
+    "heldout_medium"
+  ],
+  "rl_q_tables": [
+    {
+      "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+      "path": "results\\train\\final\\run0\\q_final.npy",
+      "sha256": "6d3133edcecff07f1d3c95715dfc4d5d1bf65a42ed3c77a7e3285a77af6ee95b"
+    },
+    {
+      "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+      "path": "results\\train\\final\\run1\\q_final.npy",
+      "sha256": "927ba79fce5e8d193d12eb097eeccf5c96ce0f0e6110264839080b737b9c1436"
+    },
+    {
+      "mask_sha256": "89c7014cd02cc02adb3cddffac64694d5d119da84796364b665eda3363f3dbeb",
+      "path": "results\\train\\final\\run2\\q_final.npy",
+      "sha256": "df526dc82960b0a5d3bd09daae564358d037788e9ecd90c023ccfe7d170f9144"
+    }
+  ],
+  "seeds": {
+    "episodes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "run": 0,
+    "scenarios": [
+      "stable",
+      "high_churn",
+      "heldout_medium"
+    ],
+    "split": "eval"
+  },
+  "sim_wall_s": 75.7,
+  "stats": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 0,
+    "ci_level": 0.95,
+    "comparators": [
+      "kademlia_epoch",
+      "tuned_heuristic",
+      "matched_random"
+    ],
+    "h3_exclude_from_best": [
+      "oracle_heuristic",
+      "tuned_heuristic_privileged"
+    ],
+    "holm_family": "RL mean vs comparators x scenarios on J",
+    "rl_label": "rl_mean",
+    "rl_runs": [
+      "rl_run0",
+      "rl_run1",
+      "rl_run2"
+    ]
+  },
+  "tune_selected": {
+    "default_config": "f=2,po=1,rs=0,ps=1,tg=all",
+    "default_rank": 22,
+    "env_hashes": {
+      "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+      "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+    },
+    "global": "f=2,po=0,rs=1,ps=0,tg=all",
+    "global_label": "tuned_heuristic",
+    "global_policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+    "n_configs": 32,
+    "n_jobs": 640,
+    "path": "results/tune/selected.json",
+    "per_scenario": {
+      "high_churn": "f=2,po=0,rs=1,ps=0,tg=top_two",
+      "stable": "f=2,po=0,rs=1,ps=0,tg=all"
+    },
+    "privileged": [
+      {
+        "config": "f=2,po=0,rs=1,ps=0,tg=all",
+        "label": "tuned_heuristic_privileged",
+        "policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=all",
+        "privileged": true,
+        "scenario": "stable"
+      },
+      {
+        "config": "f=2,po=0,rs=1,ps=0,tg=top_two",
+        "label": "tuned_heuristic_privileged",
+        "policy": "heuristic:f=2,po=0,rs=1,ps=0,tg=top_two",
+        "privileged": true,
+        "scenario": "high_churn"
+      }
+    ],
+    "scenarios": [
+      "stable",
+      "high_churn"
+    ],
+    "seeds": {
+      "episodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "n_seeds": 10,
+      "note": "TRAIN split (disjoint from VALIDATION and EVAL); run index 1000 keeps tuning episodes distinct from RL training runs 0..2",
+      "run": 1000,
+      "scenarios": [
+        "stable",
+        "high_churn"
+      ],
+      "split": "train"
+    },
+    "selection_rule": "global: max of the unweighted mean over scenarios of per-scenario mean J; per-scenario: max mean J in that scenario (privileged); ties |dJ|<=1e-12: DEFAULT_CONFIG first, then all_configs() order",
+    "wall_s": 47.0
+  },
+  "wall_s": 76.7,
+  "workers": 8
+}

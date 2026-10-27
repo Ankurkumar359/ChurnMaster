@@ -1,5 +1,28 @@
 # Experiment outputs
-results/
+# The canonical study artifacts are tracked so that a clean clone can load the
+# trained agents, regenerate figures, run the result-dependent tests and verify
+# `reproduce --full` byte-for-byte. Regenerated verification runs and any other
+# new output directories stay local.
+results/*
+!results/headroom/
+!results/diagnostics/
+!results/diagnostics_60/
+!results/checkpoint_5_17/
+!results/train/
+!results/tune/
+!results/matched/
+!results/eval/
+!results/figures/
+!results/ablations/
+results/reproduce_quick/
+results/reproduce_full/
+
+# LaTeX build by-products and local drafts (report/)
+report/*.aux
+report/*.log
+report/*.out
+report/*.synctex.gz
+report/churnmaster_report2.pdf
 
 # Python
 __pycache__/

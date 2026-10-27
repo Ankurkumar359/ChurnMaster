@@ -1,0 +1,279 @@
+{
+  "config_hashes": {
+    "bursty": "d4585e13b6853f4713208f606372e645452f9299b4a86f1307bf683ecbc23003",
+    "heldout_medium": "63a1c80249088e9476629284ab718095b286e43fe967f123de8a682bdbe1a20f",
+    "high_churn": "a413f7c18ccb336018de6ad6a3579cf6982c80fce850ec2765e56b2ce448fb89",
+    "stable": "6092c3709bd034bd3ff37a1dd9b95c76982ff512a39d123b4e68c27015652377"
+  },
+  "env_hash_scope": "sim + scenario sections + root_seed",
+  "env_hashes": {
+    "bursty": "cab7ba4bda8aa558b14649ee3c00aabbe3d5e36abcef58fbe16eb5c8443206fc",
+    "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+  },
+  "env_overrides": null,
+  "episodes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "eval_lock": {
+    "created_utc": "2026-10-25T21:57:58+00:00",
+    "disjoint": {
+      "checked_against": [
+        {
+          "episodes": [
+            0,
+            19
+          ],
+          "name": "calibration",
+          "runs": [
+            0
+          ],
+          "split": "calibration"
+        },
+        {
+          "episodes": [
+            0,
+            199
+          ],
+          "name": "train",
+          "runs": [
+            0,
+            1,
+            2
+          ],
+          "split": "train"
+        },
+        {
+          "episodes": [
+            0,
+            9
+          ],
+          "name": "tuning",
+          "runs": [
+            1000
+          ],
+          "split": "train"
+        },
+        {
+          "episodes": [
+            0,
+            4
+          ],
+          "name": "validation",
+          "runs": [
+            0
+          ],
+          "split": "validation"
+        }
+      ],
+      "n_other_seed_states": 635,
+      "overlap": false
+    },
+    "episodes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "root_seed": 20240601,
+    "run": 0,
+    "scenarios": [
+      "heldout_medium",
+      "high_churn",
+      "stable"
+    ],
+    "seed_list_hash": "d25792a4a6fab2a9c7e25f6721377d36b5f431bf6f055dd2a9873793696d9a88",
+    "seed_states": {
+      "0": [
+        2974677128,
+        1377150290,
+        2694822885,
+        4277887028
+      ],
+      "1": [
+        494867448,
+        3350424657,
+        1474114966,
+        78383235
+      ],
+      "10": [
+        2667530828,
+        1635886602,
+        2947643524,
+        3635074677
+      ],
+      "11": [
+        3527290387,
+        1058858425,
+        1021193879,
+        545943436
+      ],
+      "12": [
+        3467584999,
+        508290717,
+        2001674432,
+        3948764458
+      ],
+      "13": [
+        467217552,
+        1417369520,
+        152462524,
+        3237296909
+      ],
+      "14": [
+        402983617,
+        3939299397,
+        373319339,
+        1592877224
+      ],
+      "15": [
+        1382193771,
+        2257568209,
+        62071416,
+        1953934976
+      ],
+      "16": [
+        2648568873,
+        3641769378,
+        2161351425,
+        1150078549
+      ],
+      "17": [
+        2981214443,
+        628360004,
+        2167332345,
+        164999216
+      ],
+      "18": [
+        2996307530,
+        4135697121,
+        1263364413,
+        979160975
+      ],
+      "19": [
+        2303479908,
+        746376614,
+        2656852319,
+        834802327
+      ],
+      "2": [
+        843069056,
+        1508064301,
+        1336507469,
+        2601557851
+      ],
+      "3": [
+        136096318,
+        47075016,
+        1375911873,
+        3287916638
+      ],
+      "4": [
+        396944008,
+        2402968063,
+        2902152148,
+        500795521
+      ],
+      "5": [
+        3768751150,
+        136324301,
+        3443939504,
+        2440166644
+      ],
+      "6": [
+        1983539507,
+        3544049878,
+        3153216801,
+        2706002570
+      ],
+      "7": [
+        4008993468,
+        3667904786,
+        3860543664,
+        3211898045
+      ],
+      "8": [
+        1197960992,
+        2259312323,
+        2540092809,
+        1498452592
+      ],
+      "9": [
+        66938782,
+        1920503708,
+        4201940872,
+        348515943
+      ]
+    },
+    "split": "eval"
+  },
+  "eval_runs": [
+    {
+      "allow_rerun": false,
+      "completed_utc": "2026-10-25T22:28:55+00:00",
+      "git_hash": "2af8117510378012158ceaa1d5470cf50f3dca5e",
+      "n_jobs": 780,
+      "out_dir": "results\\eval",
+      "per_seed_sha256": "621146f91a520148b69d1ff8a5e737f5a23b883febb29e6e7418789e2d001454",
+      "seed_list_hash": "d25792a4a6fab2a9c7e25f6721377d36b5f431bf6f055dd2a9873793696d9a88"
+    }
+  ],
+  "experiment": "headroom",
+  "frozen": true,
+  "frozen_at_utc": "2026-10-25T20:09:25+00:00",
+  "g1_best": "oracle_heuristic",
+  "g1_passed": true,
+  "g1_route": "J",
+  "g2_passed": true,
+  "git_hash": "ea6d2d07fb55115f9c8dc347ded0d19fd9915532",
+  "limited_headroom": false,
+  "n_seeds": 10,
+  "packages": {
+    "churnmaster": "0.1.0",
+    "matplotlib": "3.9.2",
+    "numpy": "2.1.3",
+    "pandas": "2.2.3",
+    "python": "3.11.9"
+  },
+  "policies": [
+    "never_replace",
+    "kademlia_epoch",
+    "always_replace",
+    "oracle_heuristic",
+    "heuristic",
+    "kademlia_std"
+  ],
+  "run": 0,
+  "scenarios": [
+    "stable",
+    "high_churn"
+  ],
+  "split": "calibration",
+  "tuning_ran": false
+}

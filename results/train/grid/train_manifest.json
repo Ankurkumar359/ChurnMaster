@@ -1,0 +1,95 @@
+{
+  "env_hashes": {
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+  },
+  "experiment": "E:\\oss\\AI2(course)\\configs\\experiments\\train.toml",
+  "frozen_checked": true,
+  "manifest": "results\\headroom\\manifest.json",
+  "mode": "grid",
+  "reference_policies": [
+    "never_replace",
+    "uniform_random",
+    "kademlia_epoch",
+    "heuristic",
+    "oracle_heuristic"
+  ],
+  "runs": [
+    0
+  ],
+  "scenarios": [
+    "stable",
+    "high_churn"
+  ],
+  "selected": {
+    "alpha_min": 0.02,
+    "gamma": 0.8,
+    "last_k": 3,
+    "n_tied": 1,
+    "reason": "highest score",
+    "score": 0.9707947063289205
+  },
+  "selection_source": null,
+  "settings": [
+    {
+      "alpha_exp": 0.7,
+      "alpha_min": 0.02,
+      "episodes": 200,
+      "eps_decay_frac": 0.6,
+      "eps_end": 0.05,
+      "eps_start": 1.0,
+      "gamma": 0.8,
+      "scenarios": [
+        "stable",
+        "high_churn"
+      ],
+      "validate_every": 20
+    },
+    {
+      "alpha_exp": 0.7,
+      "alpha_min": 0.05,
+      "episodes": 200,
+      "eps_decay_frac": 0.6,
+      "eps_end": 0.05,
+      "eps_start": 1.0,
+      "gamma": 0.8,
+      "scenarios": [
+        "stable",
+        "high_churn"
+      ],
+      "validate_every": 20
+    },
+    {
+      "alpha_exp": 0.7,
+      "alpha_min": 0.02,
+      "episodes": 200,
+      "eps_decay_frac": 0.6,
+      "eps_end": 0.05,
+      "eps_start": 1.0,
+      "gamma": 0.9,
+      "scenarios": [
+        "stable",
+        "high_churn"
+      ],
+      "validate_every": 20
+    },
+    {
+      "alpha_exp": 0.7,
+      "alpha_min": 0.05,
+      "episodes": 200,
+      "eps_decay_frac": 0.6,
+      "eps_end": 0.05,
+      "eps_start": 1.0,
+      "gamma": 0.9,
+      "scenarios": [
+        "stable",
+        "high_churn"
+      ],
+      "validate_every": 20
+    }
+  ],
+  "train_wall_s": 127.42318080000041,
+  "validation_seeds": 5,
+  "wall_s": 164.2983632000014,
+  "workers": 8
+}

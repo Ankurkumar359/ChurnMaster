@@ -1,0 +1,200 @@
+{
+  "greedy": {
+    "actions": {
+      "all": {
+        "KEEP": 0.7759259259259259,
+        "PROBE": 0.12222222222222222,
+        "REPLACE": 0.10185185185185185,
+        "n": 540
+      },
+      "visited": {
+        "KEEP": 0.6461988304093568,
+        "PROBE": 0.19298245614035087,
+        "REPLACE": 0.1608187134502924,
+        "n": 342
+      },
+      "weighted": {
+        "KEEP": 0.9505975841325057,
+        "PROBE": 0.025658619093969905,
+        "REPLACE": 0.02374379677352439,
+        "n": 342
+      }
+    },
+    "healthy": {
+      "all": {
+        "KEEP": 0.8777777777777778,
+        "PROBE": 0.08888888888888889,
+        "REPLACE": 0.03333333333333333,
+        "frac_keep": 0.8777777777777778,
+        "n": 90
+      },
+      "visited": {
+        "KEEP": 0.8533333333333334,
+        "PROBE": 0.10666666666666667,
+        "REPLACE": 0.04,
+        "frac_keep": 0.8533333333333334,
+        "n": 75
+      },
+      "weighted": {
+        "KEEP": 0.978132911730459,
+        "PROBE": 0.017668863701915373,
+        "REPLACE": 0.0041982245676256,
+        "frac_keep": 0.978132911730459,
+        "n": 75
+      }
+    },
+    "inc_fail_ge2": {
+      "all": {
+        "KEEP": 0.6333333333333333,
+        "PROBE": 0.15,
+        "REPLACE": 0.21666666666666667,
+        "frac_not_keep": 0.3666666666666667,
+        "n": 180
+      },
+      "visited": {
+        "KEEP": 0.49230769230769234,
+        "PROBE": 0.2076923076923077,
+        "REPLACE": 0.3,
+        "frac_not_keep": 0.5076923076923077,
+        "n": 130
+      },
+      "weighted": {
+        "KEEP": 0.7037821975872188,
+        "PROBE": 0.1025432018258885,
+        "REPLACE": 0.19367460058689273,
+        "frac_not_keep": 0.2962178024127812,
+        "n": 130
+      }
+    },
+    "states_visited": 342
+  },
+  "i4_passed": true,
+  "run": 0,
+  "settings": {
+    "alpha_exp": 0.7,
+    "alpha_min": 0.05,
+    "episodes": 200,
+    "eps_decay_frac": 0.6,
+    "eps_end": 0.05,
+    "eps_start": 1.0,
+    "gamma": 0.9,
+    "scenarios": [
+      "stable",
+      "high_churn"
+    ],
+    "validate_every": 20
+  },
+  "validation_J_means": [
+    {
+      "J": 0.9326790430472423,
+      "checkpoint": 0,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9652617173470344,
+      "checkpoint": 0,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9520925645982408,
+      "checkpoint": 20,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9686240616250981,
+      "checkpoint": 20,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9476754314486907,
+      "checkpoint": 40,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9653633360513185,
+      "checkpoint": 40,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9587561702730294,
+      "checkpoint": 60,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9701929348718806,
+      "checkpoint": 60,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9562322334106907,
+      "checkpoint": 80,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9739481323714105,
+      "checkpoint": 80,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9618216774988417,
+      "checkpoint": 100,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9710150281440564,
+      "checkpoint": 100,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9652969188975661,
+      "checkpoint": 120,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.970260141282996,
+      "checkpoint": 120,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.967037241822618,
+      "checkpoint": 140,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9697853424482619,
+      "checkpoint": 140,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9667170890996097,
+      "checkpoint": 160,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9680619547305257,
+      "checkpoint": 160,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9670431709572282,
+      "checkpoint": 180,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9703424868808914,
+      "checkpoint": 180,
+      "scenario": "stable"
+    },
+    {
+      "J": 0.9678626238323407,
+      "checkpoint": 200,
+      "scenario": "high_churn"
+    },
+    {
+      "J": 0.9717780181976255,
+      "checkpoint": 200,
+      "scenario": "stable"
+    }
+  ],
+  "wall_s": 125.6661335000008
+}

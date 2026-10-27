@@ -1,0 +1,153 @@
+{
+  "split": "calibration",
+  "n_seeds": 10,
+  "gates": {
+    "scenario": "high_churn",
+    "thresholds": {
+      "g1_min_dJ": 0.01,
+      "g1_min_p95_rel": 0.2,
+      "g2_min_dJ": 0.01,
+      "g2_max_ping_ratio": 0.6,
+      "g2_J_tol": 0.005
+    },
+    "G1": {
+      "passed": true,
+      "route": "J",
+      "best": "oracle_heuristic",
+      "best_rule": "largest mean paired dJ vs never_replace",
+      "candidates": {
+        "kademlia_epoch": {
+          "policy": "kademlia_epoch",
+          "dJ": {
+            "mean": 0.027419802146213156,
+            "lo": 0.020404889637859264,
+            "hi": 0.03442863206397779,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_diff_ms": {
+            "mean": 431.62985047986297,
+            "lo": 327.99198825319723,
+            "hi": 517.746664815719,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_rel": 0.4098672600085108,
+          "j_route": true,
+          "p95_route": true,
+          "passes": true
+        },
+        "always_replace": {
+          "policy": "always_replace",
+          "dJ": {
+            "mean": 0.018231762895293758,
+            "lo": 0.010534700671625983,
+            "hi": 0.02564143709077487,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_diff_ms": {
+            "mean": 419.83504112283526,
+            "lo": 311.0267101677899,
+            "hi": 510.53543219778794,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_rel": 0.39568505353133854,
+          "j_route": true,
+          "p95_route": true,
+          "passes": true
+        },
+        "oracle_heuristic": {
+          "policy": "oracle_heuristic",
+          "dJ": {
+            "mean": 0.042371340724341545,
+            "lo": 0.03415230236717733,
+            "hi": 0.05017236161154818,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_diff_ms": {
+            "mean": 581.0489966945037,
+            "lo": 486.7424110535951,
+            "hi": 673.6889040191262,
+            "n": 10,
+            "level": 0.95,
+            "n_resamples": 10000,
+            "excludes_zero": true
+          },
+          "p95_rel": 0.5720294549091351,
+          "j_route": true,
+          "p95_route": true,
+          "passes": true
+        }
+      }
+    },
+    "G2": {
+      "dJ": {
+        "mean": 0.014951538578128388,
+        "lo": 0.011900427994546225,
+        "hi": 0.01881442666780412,
+        "n": 10,
+        "level": 0.95,
+        "n_resamples": 10000,
+        "excludes_zero": true
+      },
+      "ping_ratio": 0.09392265193370165,
+      "pings_oracle": 33.15,
+      "pings_kademlia": 352.95,
+      "j_route": true,
+      "ping_route": true,
+      "passed": true,
+      "route": "J",
+      "limited_headroom": false
+    },
+    "G2_info": {
+      "stable": {
+        "dJ": {
+          "mean": 0.01055522944153855,
+          "lo": 0.009228206658599237,
+          "hi": 0.011705613337350563,
+          "n": 10,
+          "level": 0.95,
+          "n_resamples": 10000,
+          "excludes_zero": true
+        },
+        "ping_ratio": 0.021485797523670795,
+        "pings_oracle": 8.85,
+        "pings_kademlia": 411.9,
+        "j_route": true,
+        "ping_route": true,
+        "passed": true,
+        "route": "J"
+      }
+    }
+  },
+  "g1_passed_final": true,
+  "limited_headroom": false,
+  "tuning": {
+    "ran": false
+  },
+  "env_overrides": null,
+  "env_hashes": {
+    "bursty": "cab7ba4bda8aa558b14649ee3c00aabbe3d5e36abcef58fbe16eb5c8443206fc",
+    "heldout_medium": "9ddbaf59784924b4edeae13fc24e25770544f27f8c2de31a5712e2ffc60bdeea",
+    "high_churn": "7c51243957c93397dc929b130f2cabbbcfa26c8131f02b0d6f451f59f70116d6",
+    "stable": "f95c3a07aa5e8570f1a4c9a7990d95e88c977d619d406fdf83831153c292477d"
+  },
+  "frozen": true,
+  "informational_policies": [
+    "heuristic",
+    "kademlia_std"
+  ]
+}

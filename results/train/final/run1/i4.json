@@ -1,0 +1,98 @@
+{
+  "beats_primary": true,
+  "comparisons": {
+    "checkpoint0": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.0347042999838156,
+      "level": 0.95,
+      "lo": 0.010371629483494127,
+      "mean": 0.021760449467362265,
+      "n": 10,
+      "n_resamples": 10000
+    },
+    "never_replace": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.0347042999838156,
+      "level": 0.95,
+      "lo": 0.010371629483494127,
+      "mean": 0.021760449467362265,
+      "n": 10,
+      "n_resamples": 10000
+    },
+    "uniform_random": {
+      "beats": true,
+      "excludes_zero": true,
+      "hi": 0.01581919081411924,
+      "level": 0.95,
+      "lo": 0.012118804397850692,
+      "mean": 0.014227302804150998,
+      "n": 10,
+      "n_resamples": 10000
+    }
+  },
+  "dq": {
+    "first_mean": 0.03500679776780006,
+    "last_mean": 0.0034992188078710696,
+    "shrinks": true,
+    "trend": [
+      {
+        "from_episode": 0,
+        "mean_abs_dq": 0.03500679776780006,
+        "to_episode": 20
+      },
+      {
+        "from_episode": 20,
+        "mean_abs_dq": 0.013474659032461514,
+        "to_episode": 40
+      },
+      {
+        "from_episode": 40,
+        "mean_abs_dq": 0.011701054288608334,
+        "to_episode": 60
+      },
+      {
+        "from_episode": 60,
+        "mean_abs_dq": 0.009123360292978354,
+        "to_episode": 80
+      },
+      {
+        "from_episode": 80,
+        "mean_abs_dq": 0.009161082221919739,
+        "to_episode": 100
+      },
+      {
+        "from_episode": 100,
+        "mean_abs_dq": 0.008160409702016692,
+        "to_episode": 120
+      },
+      {
+        "from_episode": 120,
+        "mean_abs_dq": 0.00529079990470462,
+        "to_episode": 140
+      },
+      {
+        "from_episode": 140,
+        "mean_abs_dq": 0.004569209048834619,
+        "to_episode": 160
+      },
+      {
+        "from_episode": 160,
+        "mean_abs_dq": 0.00340600437300037,
+        "to_episode": 180
+      },
+      {
+        "from_episode": 180,
+        "mean_abs_dq": 0.0034992188078710696,
+        "to_episode": 200
+      }
+    ],
+    "window": 20
+  },
+  "final_checkpoint": 200,
+  "first_checkpoint": 0,
+  "note": "checkpoint0 is the untrained greedy policy (all KEEP == never_replace); uniform_random is the untrained agent's actual episode-0 behaviour (primary)",
+  "passed": true,
+  "primary_reference": "uniform_random"
+}
