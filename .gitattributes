@@ -1,0 +1,4 @@
+# Canonical results are stored byte-for-byte (no line-ending conversion), so the
+# SHA-256 hashes recorded in the manifests (e.g. eval_manifest.json
+# per_seed_sha256, figures_manifest.json) match a clean clone on any OS.
+results/** -text
